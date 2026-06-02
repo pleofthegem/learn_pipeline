@@ -12,14 +12,14 @@ from docx import Document
 
 Row = dict[str, str]
 
-
+# Locations for saving
 INPUT_FOLDER: str = "abstracts_raw"
 OUTPUT_FOLDER: str = "abstracts_clean"
 CSV_OUTPUT_FOLDER: str = "abstract_csv"
 JSON_OUTPUT_FOLDER: str = "abstract_json"
+# File for storage
 OUTPUT_CSV: str = "anonymised_abstracts.csv"
 OUTPUT_JSON: str = "anonymised_abstracts.json"
-LEGACY_OUTPUT_CSV: str = "anonymised_abstracts.csv"
 SUPPORTED_SUFFIXES: set[str] = {".docx", ".pdf"}
 CSV_FIELDNAMES: list[str] = [
     "file_name",
@@ -168,13 +168,11 @@ def read_json_rows(json_path: Path) -> list[Row]:
 def existing_rows(
     csv_path: Path,
     json_path: Path,
-    legacy_csv_path: Path,
 ) -> list[Row]:
     """Find the first available aggregate output to seed single-file runs."""
     for path, reader in (
         (csv_path, read_csv_rows),
         (json_path, read_json_rows),
-        (legacy_csv_path, read_csv_rows),
     ):
         rows = reader(path)
         if rows:
@@ -214,7 +212,6 @@ def main() -> None:
     output_dir = Path(OUTPUT_FOLDER)
     csv_path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV
     json_path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON
-    legacy_csv_path = Path(LEGACY_OUTPUT_CSV)
 
     if not input_dir.exists():
         raise SystemExit(f"Input folder not found: {input_dir}")
@@ -253,7 +250,7 @@ def main() -> None:
     if args.file_name:
         # Keep previous aggregate rows so targeted runs do not discard work.
         output_rows = upsert_rows(
-            existing_rows(csv_path, json_path, legacy_csv_path),
+            existing_rows(csv_path, json_path),
             rows
         )
 
