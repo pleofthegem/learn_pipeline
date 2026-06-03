@@ -43,6 +43,15 @@ def test_anonymise_text_replaces_supported_identifiers(sample_text: str) -> None
     assert "[PHONE_REMOVED]" in clean_text
 
 
+def test_anonymise_text_masks_email_before_adjacent_sentence(
+    email_before_adjacent_sentence_text: str,
+) -> None:
+    """Check that sentence text after an email is preserved."""
+    clean_text = anonymise_text(email_before_adjacent_sentence_text)
+
+    assert clean_text == "[EMAIL_REMOVED].This was a test"
+
+
 def test_process_file_extracts_and_anonymises_pdf(sample_pdf_path: Path) -> None:
     """Check that PDF processing returns metadata and anonymised text."""
     row = process_file(sample_pdf_path)
@@ -221,7 +230,8 @@ def test_existing_rows_returns_empty_list_when_no_outputs_exist(
     tmp_path: Path,
 ) -> None:
     """Check that existing row discovery returns no rows when outputs are absent."""
-    assert existing_rows(tmp_path / "missing.csv", tmp_path / "missing.json") == []
+    assert existing_rows(tmp_path / "missing.csv",
+                         tmp_path / "missing.json") == []
 
 
 def test_upsert_rows_replaces_existing_rows_and_adds_new_rows() -> None:

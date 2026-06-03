@@ -19,6 +19,11 @@ def sample_text(sample_paragraphs: list[str]) -> str:
     return "\n".join(sample_paragraphs)
 
 
+@pytest.fixture
+def email_before_adjacent_sentence_text() -> str:
+    return "test@email.com.This was a test"
+
+
 def write_sample_pdf(path: Path, paragraphs: list[str]) -> None:
     pdf = fitz.open()
     page = pdf.new_page()
