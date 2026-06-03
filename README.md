@@ -2,7 +2,7 @@
 
 ## Usage
 
-Process every supported file in `abstracts_raw`:
+Process every PDF file in `abstracts_raw`:
 
 ```bash
 ./.venv/bin/python anonymise_abstracts.py

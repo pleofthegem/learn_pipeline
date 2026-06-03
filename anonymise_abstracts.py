@@ -1,4 +1,4 @@
-"""Extract, anonymise, and export abstract text from PDF and DOCX files."""
+"""Extract, anonymise, and export abstract text from PDF files."""
 
 import argparse
 import csv
@@ -7,9 +7,8 @@ import re
 from pathlib import Path
 
 import fitz  # PyMuPDF
-from docx import Document
 
-
+# TODO: implement logging
 Row = dict[str, str]
 
 # Locations for saving
@@ -20,7 +19,8 @@ JSON_OUTPUT_FOLDER: str = "abstract_json"
 # File for storage
 OUTPUT_CSV: str = "anonymised_abstracts.csv"
 OUTPUT_JSON: str = "anonymised_abstracts.json"
-SUPPORTED_SUFFIXES: set[str] = {".docx", ".pdf"}
+PDF_SUFFIX: str = ".pdf"
+SUPPORTED_SUFFIXES: set[str] = {PDF_SUFFIX}
 CSV_FIELDNAMES: list[str] = [
     "file_name",
     "file_type",
@@ -40,24 +40,18 @@ PHONE_RE: str = r"(\+?\d[\d\s().-]{7,}\d)"
 def parse_args() -> argparse.Namespace:
     """Parse command line options for all-file or single-file processing."""
     parser = argparse.ArgumentParser(
-        description="Anonymise abstract text from PDF and DOCX files."
+        description="Anonymise abstract text from PDF files."
     )
     parser.add_argument(
         "file_name",
         nargs="?",
         help=(
-            "Optional PDF/DOCX file name or path to process. If omitted, "
-            "all supported files in abstracts_raw are processed."
+            "Optional PDF file name or path to process. If omitted, "
+            "all PDF files in abstracts_raw are processed."
         ),
         type=str,
     )
     return parser.parse_args()
-
-
-def extract_text_from_docx(path: Path) -> str:
-    """Return the combined paragraph text from a DOCX file."""
-    doc = Document(path)
-    return "\n".join(p.text for p in doc.paragraphs)
 
 
 def extract_text_from_pdf(path: Path) -> str:
@@ -77,15 +71,13 @@ def anonymise_text(text: str) -> str:
     return text
 
 
-def process_file(path: Path) -> Row | None:
-    """Extract and anonymise a supported input file."""
+def process_file(path: Path) -> Row:
+    """Extract and anonymise a PDF input file."""
     suffix = path.suffix.lower()
-    if suffix == ".docx":
-        raw_text = extract_text_from_docx(path)
-    elif suffix == ".pdf":
-        raw_text = extract_text_from_pdf(path)
-    else:
-        return None
+    if suffix != PDF_SUFFIX:
+        raise ValueError(f"Expected a PDF file, got: {path.name}")
+
+    raw_text = extract_text_from_pdf(path)
     clean_text = anonymise_text(raw_text)
     return {
         "file_name": path.name,
@@ -95,13 +87,13 @@ def process_file(path: Path) -> Row | None:
 
 
 def clean_text_path(output_dir: Path, source_path: Path) -> Path:
-    """Build a clean-text output path that keeps sibling formats distinct."""
+    """Build a clean-text output path for a PDF source file."""
     suffix_name = source_path.suffix.lower().lstrip(".")
     return output_dir / f"{source_path.stem}_{suffix_name}_clean.txt"
 
 
 def supported_input_files(input_dir: Path) -> list[Path]:
-    """List supported input files from the raw abstracts directory."""
+    """List PDF input files from the raw abstracts directory."""
     return sorted(
         path for path in input_dir.iterdir()
         if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
@@ -109,7 +101,7 @@ def supported_input_files(input_dir: Path) -> list[Path]:
 
 
 def resolve_input_path(file_name: str, input_dir: Path) -> Path:
-    """Resolve a CLI file argument to one concrete supported input path."""
+    """Resolve a CLI file argument to one concrete PDF input path."""
     candidate = Path(file_name)
     if not candidate.is_absolute() and candidate.parent == Path("."):
         candidate = input_dir / candidate
@@ -236,15 +228,14 @@ def main() -> None:
     rows: list[Row] = []
     for path in paths:
         result = process_file(path)
-        if result:
-            clean_file = clean_text_path(output_dir, path)
-            clean_file.write_text(result["clean_text"], encoding="utf-8")
-            rows.append({
-                "file_name": result["file_name"],
-                "file_type": result["file_type"],
-                "clean_text_file": str(clean_file),
-                "clean_text": result["clean_text"],
-            })
+        clean_file = clean_text_path(output_dir, path)
+        clean_file.write_text(result["clean_text"], encoding="utf-8")
+        rows.append({
+            "file_name": result["file_name"],
+            "file_type": result["file_type"],
+            "clean_text_file": str(clean_file),
+            "clean_text": result["clean_text"],
+        })
 
     output_rows: list[Row] = rows
     if args.file_name:

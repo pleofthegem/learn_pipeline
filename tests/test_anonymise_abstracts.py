@@ -8,7 +8,6 @@ from anonymise_abstracts import (
     anonymise_text,
     clean_text_path,
     existing_rows,
-    extract_text_from_docx,
     extract_text_from_pdf,
     process_file,
     read_csv_rows,
@@ -19,14 +18,6 @@ from anonymise_abstracts import (
     write_csv,
     write_json,
 )
-
-
-def test_extract_text_from_docx(
-    sample_docx_path: Path,
-    sample_text: str,
-) -> None:
-    """Check that DOCX paragraph extraction returns the expected text."""
-    assert extract_text_from_docx(sample_docx_path) == sample_text
 
 
 def test_extract_text_from_pdf(
@@ -52,22 +43,6 @@ def test_anonymise_text_replaces_supported_identifiers(sample_text: str) -> None
     assert "[PHONE_REMOVED]" in clean_text
 
 
-def test_process_file_extracts_and_anonymises_docx(sample_docx_path: Path) -> None:
-    """Check that DOCX processing returns metadata and anonymised text."""
-    row = process_file(sample_docx_path)
-
-    assert row == {
-        "file_name": "abstract_001.docx",
-        "file_type": ".docx",
-        "clean_text": (
-            "Title: Sample abstract\n"
-            "Email: [EMAIL_REMOVED]\n"
-            "ORCID: [ORCID_REMOVED]\n"
-            "Phone: [PHONE_REMOVED]"
-        ),
-    }
-
-
 def test_process_file_extracts_and_anonymises_pdf(sample_pdf_path: Path) -> None:
     """Check that PDF processing returns metadata and anonymised text."""
     row = process_file(sample_pdf_path)
@@ -81,12 +56,13 @@ def test_process_file_extracts_and_anonymises_pdf(sample_pdf_path: Path) -> None
     assert "[PHONE_REMOVED]" in row["clean_text"]
 
 
-def test_process_file_returns_none_for_unsupported_file(tmp_path: Path) -> None:
-    """Check that unsupported file extensions are skipped."""
+def test_process_file_rejects_non_pdf_file(tmp_path: Path) -> None:
+    """Check that direct non-PDF processing is rejected."""
     unsupported_path = tmp_path / "notes.txt"
-    unsupported_path.write_text("Not a PDF or DOCX", encoding="utf-8")
+    unsupported_path.write_text("Not a PDF", encoding="utf-8")
 
-    assert process_file(unsupported_path) is None
+    with pytest.raises(ValueError, match="Expected a PDF file"):
+        process_file(unsupported_path)
 
 
 def test_clean_text_path_includes_source_extension(tmp_path: Path) -> None:
@@ -99,16 +75,15 @@ def test_clean_text_path_includes_source_extension(tmp_path: Path) -> None:
     )
 
 
-def test_supported_input_files_filters_and_sorts_supported_files(
+def test_supported_input_files_filters_and_sorts_pdf_files(
     sample_input_dir: Path,
 ) -> None:
-    """Check that only supported input files are listed in sorted order."""
+    """Check that only PDF input files are listed in sorted order."""
     paths = supported_input_files(sample_input_dir)
 
     assert [path.name for path in paths] == [
-        "abstract_001.docx",
         "abstract_001.pdf",
-        "abstract_002.docx",
+        "abstract_002.pdf",
     ]
 
 
@@ -122,14 +97,19 @@ def test_resolve_input_path_accepts_exact_file_name(sample_input_dir: Path) -> N
 def test_resolve_input_path_accepts_unique_stem(sample_input_dir: Path) -> None:
     """Check that a unique stem resolves to its matching input file."""
     assert resolve_input_path("abstract_002", sample_input_dir) == (
-        sample_input_dir / "abstract_002.docx"
+        sample_input_dir / "abstract_002.pdf"
     )
 
 
-def test_resolve_input_path_rejects_ambiguous_stem(sample_input_dir: Path) -> None:
+def test_resolve_input_path_rejects_ambiguous_pdf_stem(tmp_path: Path) -> None:
     """Check that ambiguous stems raise an error instead of guessing."""
+    input_dir = tmp_path / "abstracts_raw"
+    input_dir.mkdir()
+    (input_dir / "abstract_001.pdf").write_text("PDF placeholder", encoding="utf-8")
+    (input_dir / "abstract_001.PDF").write_text("PDF placeholder", encoding="utf-8")
+
     with pytest.raises(ValueError, match="Multiple input files match"):
-        resolve_input_path("abstract_001", sample_input_dir)
+        resolve_input_path("abstract_001", input_dir)
 
 
 def test_resolve_input_path_rejects_missing_file(sample_input_dir: Path) -> None:
@@ -148,13 +128,13 @@ def test_read_csv_rows_normalises_rows(tmp_path: Path) -> None:
     csv_path = tmp_path / "abstracts.csv"
     csv_path.write_text(
         "file_name,file_type,clean_text_file,clean_text,extra\n"
-        "abstract_001.docx,.docx,clean.txt,Sample text,ignored\n",
+        "abstract_001.pdf,.pdf,clean.txt,Sample text,ignored\n",
         encoding="utf-8",
     )
 
     assert read_csv_rows(csv_path) == [{
-        "file_name": "abstract_001.docx",
-        "file_type": ".docx",
+        "file_name": "abstract_001.pdf",
+        "file_type": ".pdf",
         "clean_text_file": "clean.txt",
         "clean_text": "Sample text",
     }]
@@ -168,7 +148,7 @@ def test_read_json_rows_returns_empty_list_for_missing_file(tmp_path: Path) -> N
 def test_read_json_rows_returns_empty_list_for_non_list_json(tmp_path: Path) -> None:
     """Check that non-list JSON aggregates are ignored."""
     json_path = tmp_path / "abstracts.json"
-    json_path.write_text('{"file_name": "abstract_001.docx"}', encoding="utf-8")
+    json_path.write_text('{"file_name": "abstract_001.pdf"}', encoding="utf-8")
 
     assert read_json_rows(json_path) == []
 
@@ -179,8 +159,8 @@ def test_read_json_rows_normalises_rows(tmp_path: Path) -> None:
     json_path.write_text(
         json.dumps([
             {
-                "file_name": "abstract_001.docx",
-                "file_type": ".docx",
+                "file_name": "abstract_001.pdf",
+                "file_type": ".pdf",
                 "clean_text_file": "clean.txt",
                 "clean_text": "Sample text",
                 "extra": "ignored",
@@ -191,8 +171,8 @@ def test_read_json_rows_normalises_rows(tmp_path: Path) -> None:
     )
 
     assert read_json_rows(json_path) == [{
-        "file_name": "abstract_001.docx",
-        "file_type": ".docx",
+        "file_name": "abstract_001.pdf",
+        "file_type": ".pdf",
         "clean_text_file": "clean.txt",
         "clean_text": "Sample text",
     }]
@@ -203,14 +183,14 @@ def test_existing_rows_prefers_csv_when_available(tmp_path: Path) -> None:
     csv_path = tmp_path / "abstracts.csv"
     json_path = tmp_path / "abstracts.json"
     csv_rows = [{
-        "file_name": "from_csv.docx",
-        "file_type": ".docx",
+        "file_name": "from_csv.pdf",
+        "file_type": ".pdf",
         "clean_text_file": "csv.txt",
         "clean_text": "CSV text",
     }]
     json_rows = [{
-        "file_name": "from_json.docx",
-        "file_type": ".docx",
+        "file_name": "from_json.pdf",
+        "file_type": ".pdf",
         "clean_text_file": "json.txt",
         "clean_text": "JSON text",
     }]
@@ -226,8 +206,8 @@ def test_existing_rows_falls_back_to_json(tmp_path: Path) -> None:
     csv_path = tmp_path / "missing.csv"
     json_path = tmp_path / "abstracts.json"
     rows = [{
-        "file_name": "from_json.docx",
-        "file_type": ".docx",
+        "file_name": "from_json.pdf",
+        "file_type": ".pdf",
         "clean_text_file": "json.txt",
         "clean_text": "JSON text",
     }]
@@ -248,22 +228,22 @@ def test_upsert_rows_replaces_existing_rows_and_adds_new_rows() -> None:
     """Check that processed rows replace matches and add new filenames."""
     existing = [
         {
-            "file_name": "abstract_001.docx",
-            "file_type": ".docx",
+            "file_name": "abstract_001.pdf",
+            "file_type": ".pdf",
             "clean_text_file": "old.txt",
             "clean_text": "Old text",
         },
         {
-            "file_name": "abstract_003.docx",
-            "file_type": ".docx",
+            "file_name": "abstract_003.pdf",
+            "file_type": ".pdf",
             "clean_text_file": "third.txt",
             "clean_text": "Third text",
         },
     ]
     processed = [
         {
-            "file_name": "abstract_001.docx",
-            "file_type": ".docx",
+            "file_name": "abstract_001.pdf",
+            "file_type": ".pdf",
             "clean_text_file": "new.txt",
             "clean_text": "New text",
         },
@@ -277,8 +257,8 @@ def test_upsert_rows_replaces_existing_rows_and_adds_new_rows() -> None:
 
     assert upsert_rows(existing, processed) == [
         {
-            "file_name": "abstract_001.docx",
-            "file_type": ".docx",
+            "file_name": "abstract_001.pdf",
+            "file_type": ".pdf",
             "clean_text_file": "new.txt",
             "clean_text": "New text",
         },
@@ -289,8 +269,8 @@ def test_upsert_rows_replaces_existing_rows_and_adds_new_rows() -> None:
             "clean_text": "Second text",
         },
         {
-            "file_name": "abstract_003.docx",
-            "file_type": ".docx",
+            "file_name": "abstract_003.pdf",
+            "file_type": ".pdf",
             "clean_text_file": "third.txt",
             "clean_text": "Third text",
         },
@@ -301,8 +281,8 @@ def test_write_csv_creates_parent_directory_and_writes_rows(tmp_path: Path) -> N
     """Check that CSV writing creates directories and persists rows."""
     csv_path = tmp_path / "abstract_csv" / "abstracts.csv"
     rows = [{
-        "file_name": "abstract_001.docx",
-        "file_type": ".docx",
+        "file_name": "abstract_001.pdf",
+        "file_type": ".pdf",
         "clean_text_file": "clean.txt",
         "clean_text": "Sample text",
     }]
@@ -317,8 +297,8 @@ def test_write_json_creates_parent_directory_and_writes_rows(tmp_path: Path) -> 
     """Check that JSON writing creates directories and persists rows."""
     json_path = tmp_path / "abstract_json" / "abstracts.json"
     rows = [{
-        "file_name": "abstract_001.docx",
-        "file_type": ".docx",
+        "file_name": "abstract_001.pdf",
+        "file_type": ".pdf",
         "clean_text_file": "clean.txt",
         "clean_text": "Sample text",
     }]
