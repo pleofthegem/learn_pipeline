@@ -29,10 +29,11 @@ CSV_FIELDNAMES: list[str] = [
 ]
 
 # Patterns for personal/contact identifiers removed from extracted text.
-EMAIL_RE: str = (
-    r"(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
-    r"(?![\w.+-])"
-)
+# EMAIL_RE: str = (
+#     r"(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+#     r"(?![\w.+-])"
+# )
+EMAIL_RE = r'[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.){1,2}[A-Za-z]{2,}\b'
 ORCID_RE: str = r"\b(?:https?://orcid\.org/)?\d{4}-\d{4}-\d{4}-\d{3}[\dX]\b"
 PHONE_RE: str = r"(\+?\d[\d\s().-]{7,}\d)"
 
