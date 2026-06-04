@@ -2,7 +2,7 @@
 
 ## Usage
 
-Process every PDF file in `abstracts_raw`:
+Process every supported file in `abstracts_raw`:
 
 ```bash
 ./.venv/bin/python anonymise_abstracts.py
@@ -13,6 +13,9 @@ Process a single file:
 ```bash
 ./.venv/bin/python anonymise_abstracts.py abstract_001.pdf
 ```
+
+Supported extensions: `.doc`, `.docx`, `.md`, `.pdf`, `.pptx`, `.rst`, `.text`, `.txt`.
+Legacy `.doc` extraction uses `antiword`, `catdoc`, or `strings`.
 
 Outputs are written to:
 
