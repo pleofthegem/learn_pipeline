@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -24,6 +25,10 @@ SUPPORTED_SUFFIXES: set[str] = {PDF_SUFFIX}
 CSV_FIELDNAMES: list[str] = [
     "file_name",
     "file_type",
+    "run_id",
+    "emails_removed_count",
+    "orcids_removed_count",
+    "phones_removed_count",
     "clean_text_file",
     "clean_text",
 ]
@@ -68,10 +73,20 @@ def extract_text_from_pdf(path: Path) -> str:
 
 def anonymise_text(text: str) -> str:
     """Replace supported personal identifiers with removal markers."""
-    text = re.sub(EMAIL_RE, "[EMAIL_REMOVED]", text)
-    text = re.sub(ORCID_RE, "[ORCID_REMOVED]", text)
-    text = re.sub(PHONE_RE, "[PHONE_REMOVED]", text)
-    return text
+    clean_text, _ = anonymise_text_with_counts(text)
+    return clean_text
+
+
+def anonymise_text_with_counts(text: str) -> tuple[str, Row]:
+    """Replace supported personal identifiers and count each replacement."""
+    text, emails_removed = re.subn(EMAIL_RE, "[EMAIL_REMOVED]", text)
+    text, orcids_removed = re.subn(ORCID_RE, "[ORCID_REMOVED]", text)
+    text, phones_removed = re.subn(PHONE_RE, "[PHONE_REMOVED]", text)
+    return text, {
+        "emails_removed_count": str(emails_removed),
+        "orcids_removed_count": str(orcids_removed),
+        "phones_removed_count": str(phones_removed),
+    }
 
 
 def process_file(path: Path) -> Row:
@@ -81,10 +96,11 @@ def process_file(path: Path) -> Row:
         raise ValueError(f"Expected a PDF file, got: {path.name}")
 
     raw_text = extract_text_from_pdf(path)
-    clean_text = anonymise_text(raw_text)
+    clean_text, removal_counts = anonymise_text_with_counts(raw_text)
     return {
         "file_name": path.name,
         "file_type": suffix,
+        **removal_counts,
         "clean_text": clean_text,
     }
 
@@ -200,6 +216,12 @@ def write_json(rows: list[Row], json_path: Path) -> None:
         f.write("\n")
 
 
+def get_current_time_data() -> str:
+    """Return date-time text for output logging."""
+    now = datetime.now()
+    return datetime.strftime(now, '%d_%m_%Y__%H_%M')
+
+
 def main() -> None:
     """Run the abstract anonymisation pipeline from the CLI."""
     args = parse_args()
@@ -228,6 +250,8 @@ def main() -> None:
     else:
         paths = supported_input_files(input_dir)
 
+    processed_at = get_current_time_data()
+    run_id = f"run_{processed_at}"
     rows: list[Row] = []
     for path in paths:
         result = process_file(path)
@@ -236,6 +260,10 @@ def main() -> None:
         rows.append({
             "file_name": result["file_name"],
             "file_type": result["file_type"],
+            "run_id": run_id,
+            "emails_removed_count": result["emails_removed_count"],
+            "orcids_removed_count": result["orcids_removed_count"],
+            "phones_removed_count": result["phones_removed_count"],
             "clean_text_file": str(clean_file),
             "clean_text": result["clean_text"],
         })

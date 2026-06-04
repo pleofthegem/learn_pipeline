@@ -6,6 +6,7 @@ import pytest
 
 from anonymise_abstracts import (
     anonymise_text,
+    anonymise_text_with_counts,
     clean_text_path,
     existing_rows,
     extract_text_from_pdf,
@@ -18,6 +19,14 @@ from anonymise_abstracts import (
     write_csv,
     write_json,
 )
+
+ZERO_LOG_FIELDS = {
+    "run_id": "",
+    "processed_at": "",
+    "emails_removed_count": "",
+    "orcids_removed_count": "",
+    "phones_removed_count": "",
+}
 
 
 def test_extract_text_from_pdf(
@@ -43,6 +52,20 @@ def test_anonymise_text_replaces_supported_identifiers(sample_text: str) -> None
     assert "[PHONE_REMOVED]" in clean_text
 
 
+def test_anonymise_text_with_counts_counts_removed_identifiers(
+    sample_text: str,
+) -> None:
+    """Check that each supported removal type is counted."""
+    clean_text, counts = anonymise_text_with_counts(sample_text)
+
+    assert "author@example.com" not in clean_text
+    assert counts == {
+        "emails_removed_count": "1",
+        "orcids_removed_count": "1",
+        "phones_removed_count": "1",
+    }
+
+
 def test_anonymise_text_masks_email_before_adjacent_sentence(
     email_before_adjacent_sentence_text: str,
 ) -> None:
@@ -59,6 +82,9 @@ def test_process_file_extracts_and_anonymises_pdf(sample_pdf_path: Path) -> None
     assert row is not None
     assert row["file_name"] == "abstract_001.pdf"
     assert row["file_type"] == ".pdf"
+    assert row["emails_removed_count"] == "1"
+    assert row["orcids_removed_count"] == "1"
+    assert row["phones_removed_count"] == "1"
     assert "author@example.com" not in row["clean_text"]
     assert "[EMAIL_REMOVED]" in row["clean_text"]
     assert "[ORCID_REMOVED]" in row["clean_text"]
@@ -144,6 +170,7 @@ def test_read_csv_rows_normalises_rows(tmp_path: Path) -> None:
     assert read_csv_rows(csv_path) == [{
         "file_name": "abstract_001.pdf",
         "file_type": ".pdf",
+        **ZERO_LOG_FIELDS,
         "clean_text_file": "clean.txt",
         "clean_text": "Sample text",
     }]
@@ -182,6 +209,7 @@ def test_read_json_rows_normalises_rows(tmp_path: Path) -> None:
     assert read_json_rows(json_path) == [{
         "file_name": "abstract_001.pdf",
         "file_type": ".pdf",
+        **ZERO_LOG_FIELDS,
         "clean_text_file": "clean.txt",
         "clean_text": "Sample text",
     }]
@@ -194,12 +222,14 @@ def test_existing_rows_prefers_csv_when_available(tmp_path: Path) -> None:
     csv_rows = [{
         "file_name": "from_csv.pdf",
         "file_type": ".pdf",
+        **ZERO_LOG_FIELDS,
         "clean_text_file": "csv.txt",
         "clean_text": "CSV text",
     }]
     json_rows = [{
         "file_name": "from_json.pdf",
         "file_type": ".pdf",
+        **ZERO_LOG_FIELDS,
         "clean_text_file": "json.txt",
         "clean_text": "JSON text",
     }]
@@ -217,6 +247,7 @@ def test_existing_rows_falls_back_to_json(tmp_path: Path) -> None:
     rows = [{
         "file_name": "from_json.pdf",
         "file_type": ".pdf",
+        **ZERO_LOG_FIELDS,
         "clean_text_file": "json.txt",
         "clean_text": "JSON text",
     }]
@@ -240,12 +271,14 @@ def test_upsert_rows_replaces_existing_rows_and_adds_new_rows() -> None:
         {
             "file_name": "abstract_001.pdf",
             "file_type": ".pdf",
+            **ZERO_LOG_FIELDS,
             "clean_text_file": "old.txt",
             "clean_text": "Old text",
         },
         {
             "file_name": "abstract_003.pdf",
             "file_type": ".pdf",
+            **ZERO_LOG_FIELDS,
             "clean_text_file": "third.txt",
             "clean_text": "Third text",
         },
@@ -254,12 +287,14 @@ def test_upsert_rows_replaces_existing_rows_and_adds_new_rows() -> None:
         {
             "file_name": "abstract_001.pdf",
             "file_type": ".pdf",
+            **ZERO_LOG_FIELDS,
             "clean_text_file": "new.txt",
             "clean_text": "New text",
         },
         {
             "file_name": "abstract_002.pdf",
             "file_type": ".pdf",
+            **ZERO_LOG_FIELDS,
             "clean_text_file": "second.txt",
             "clean_text": "Second text",
         },
@@ -269,18 +304,21 @@ def test_upsert_rows_replaces_existing_rows_and_adds_new_rows() -> None:
         {
             "file_name": "abstract_001.pdf",
             "file_type": ".pdf",
+            **ZERO_LOG_FIELDS,
             "clean_text_file": "new.txt",
             "clean_text": "New text",
         },
         {
             "file_name": "abstract_002.pdf",
             "file_type": ".pdf",
+            **ZERO_LOG_FIELDS,
             "clean_text_file": "second.txt",
             "clean_text": "Second text",
         },
         {
             "file_name": "abstract_003.pdf",
             "file_type": ".pdf",
+            **ZERO_LOG_FIELDS,
             "clean_text_file": "third.txt",
             "clean_text": "Third text",
         },
@@ -293,6 +331,7 @@ def test_write_csv_creates_parent_directory_and_writes_rows(tmp_path: Path) -> N
     rows = [{
         "file_name": "abstract_001.pdf",
         "file_type": ".pdf",
+        **ZERO_LOG_FIELDS,
         "clean_text_file": "clean.txt",
         "clean_text": "Sample text",
     }]
@@ -309,6 +348,7 @@ def test_write_json_creates_parent_directory_and_writes_rows(tmp_path: Path) -> 
     rows = [{
         "file_name": "abstract_001.pdf",
         "file_type": ".pdf",
+        **ZERO_LOG_FIELDS,
         "clean_text_file": "clean.txt",
         "clean_text": "Sample text",
     }]
