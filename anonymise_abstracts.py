@@ -1,18 +1,13 @@
-"""Extract, anonymise, and export abstract text from supported document files."""
+"""Extract, anonymise, and export abstract text from PDF files."""
 
 import argparse
 import csv
 import json
 import re
-import shutil
-import subprocess
-import zipfile
 from datetime import datetime
 from pathlib import Path
-from xml.etree import ElementTree
 
 import fitz  # PyMuPDF
-from docx import Document
 
 # TODO: implement logging
 Row = dict[str, str]
@@ -25,20 +20,10 @@ JSON_OUTPUT_FOLDER: str = "abstract_json"
 # File for storage
 OUTPUT_CSV: str = "anonymised_abstracts.csv"
 OUTPUT_JSON: str = "anonymised_abstracts.json"
-SUPPORTED_SUFFIXES: set[str] = {
-    ".doc",
-    ".docx",
-    ".md",
-    ".pdf",
-    ".pptx",
-    ".rst",
-    ".text",
-    ".txt",
-}
-TEXT_SUFFIXES: set[str] = {".md", ".rst", ".text", ".txt"}
+PDF_SUFFIX: str = ".pdf"
+SUPPORTED_SUFFIXES: set[str] = {PDF_SUFFIX}
 CSV_FIELDNAMES: list[str] = [
     "file_name",
-    "file_type",
     "run_id",
     "emails_removed_count",
     "orcids_removed_count",
@@ -60,16 +45,22 @@ PHONE_RE: str = r"(\+?\d[\d\s().-]{7,}\d)"
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command line options for all-file or single-file processing."""
+    """Parse command-line options for the anonymisation script.
+
+    Returns:
+        argparse.Namespace: Parsed CLI arguments. The namespace contains
+            `file_name`, which is either a PDF file name/path string or `None`
+            when all PDFs in `INPUT_FOLDER` should be processed.
+    """
     parser = argparse.ArgumentParser(
-        description="Anonymise abstract text from supported document files."
+        description="Anonymise abstract text from PDF files."
     )
     parser.add_argument(
         "file_name",
         nargs="?",
         help=(
-            "Optional file name or path to process. If omitted, "
-            "all supported files in abstracts_raw are processed."
+            "Optional PDF file name or path to process. If omitted, "
+            "all PDF files in abstracts_raw are processed."
         ),
         type=str,
     )
@@ -77,7 +68,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def extract_text_from_pdf(path: Path) -> str:
-    """Return the combined page text from a PDF file."""
+    """Extract text from every page of a PDF file.
+
+    Args:
+        path: Path to the PDF file to read.
+
+    Returns:
+        str: Combined text extracted from all pages, separated by newlines.
+    """
     text: list[str] = []
     with fitz.open(path) as pdf:
         for page in pdf:
@@ -85,89 +83,34 @@ def extract_text_from_pdf(path: Path) -> str:
     return "\n".join(text)
 
 
-def extract_text_from_docx(path: Path) -> str:
-    """Return paragraph and table-cell text from a DOCX file."""
-    doc = Document(path)
-    text = [p.text for p in doc.paragraphs]
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                text.extend(p.text for p in cell.paragraphs)
-    return "\n".join(part for part in text if part.strip())
-
-
-def extract_text_from_doc(path: Path) -> str:
-    """Return text from a legacy DOC file using a local extractor."""
-    for command in ("antiword", "catdoc"):
-        if shutil.which(command):
-            result = subprocess.run(
-                [command, str(path)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            return result.stdout
-
-    if shutil.which("strings"):
-        result = subprocess.run(
-            ["strings", "-n", "5", str(path)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return result.stdout
-
-    raise ValueError(
-        "Legacy .doc extraction requires antiword, catdoc, or strings."
-    )
-
-
-def extract_text_from_pptx(path: Path) -> str:
-    """Return text from PPTX slide XML."""
-    text: list[str] = []
-    with zipfile.ZipFile(path) as presentation:
-        slide_names = sorted(
-            name for name in presentation.namelist()
-            if name.startswith("ppt/slides/slide") and name.endswith(".xml")
-        )
-        for slide_name in slide_names:
-            root = ElementTree.fromstring(presentation.read(slide_name))
-            for node in root.iter():
-                if node.tag.endswith("}t") and node.text:
-                    text.append(node.text)
-    return "\n".join(text)
-
-
-def extract_text_from_text_file(path: Path) -> str:
-    """Return text from a UTF-8 compatible text file."""
-    return path.read_text(encoding="utf-8", errors="replace")
-
-
-def extract_text(path: Path) -> str:
-    """Return extracted text from a supported input file."""
-    match path.suffix.lower():
-        case ".pdf":
-            return extract_text_from_pdf(path)
-        case ".docx":
-            return extract_text_from_docx(path)
-        case ".doc":
-            return extract_text_from_doc(path)
-        case ".pptx":
-            return extract_text_from_pptx(path)
-        case suffix if suffix in TEXT_SUFFIXES:
-            return extract_text_from_text_file(path)
-        case _:
-            raise ValueError(f"Unsupported file type: {path.suffix}")
-
-
 def anonymise_text(text: str) -> str:
-    """Replace supported personal identifiers with removal markers."""
+    """Replace supported personal identifiers with removal markers.
+
+    Wrapper for anonymise_text_with_counts
+
+    Args:
+        text: Raw text that may contain email addresses, ORCID identifiers, or
+            phone numbers.
+
+    Returns:
+        str: Text with supported identifiers replaced by removal markers.
+    """
     clean_text, _ = anonymise_text_with_counts(text)
     return clean_text
 
 
 def anonymise_text_with_counts(text: str) -> tuple[str, Row]:
-    """Replace supported personal identifiers and count each replacement."""
+    """Replace supported personal identifiers and count each replacement.
+
+    Args:
+        text: Raw text that may contain email addresses, ORCID identifiers, or
+            phone numbers.
+
+    Returns:
+        tuple[str, Row]: A tuple containing the anonymised text and a row-like
+            dictionary with string counts for removed emails, ORCIDs, and phone
+            numbers.
+    """
     text, emails_removed = re.subn(EMAIL_RE, "[EMAIL_REMOVED]", text)
     text, orcids_removed = re.subn(ORCID_RE, "[ORCID_REMOVED]", text)
     text, phones_removed = re.subn(PHONE_RE, "[PHONE_REMOVED]", text)
@@ -179,29 +122,56 @@ def anonymise_text_with_counts(text: str) -> tuple[str, Row]:
 
 
 def process_file(path: Path) -> Row:
-    """Extract and anonymise a supported input file."""
+    """Extract and anonymise one PDF input file.
+
+    Args:
+        path: Path to the PDF file to process.
+
+    Returns:
+        Row: Dictionary containing the source file name, removal counts, and
+            anonymised text.
+
+    Raises:
+        ValueError: If `path` does not have a PDF suffix.
+    """
     suffix = path.suffix.lower()
-    if suffix not in SUPPORTED_SUFFIXES:
+    if suffix != PDF_SUFFIX:
         raise ValueError(f"Unsupported file type: {path.suffix}")
 
-    raw_text = extract_text(path)
+    raw_text = extract_text_from_pdf(path)
     clean_text, removal_counts = anonymise_text_with_counts(raw_text)
     return {
         "file_name": path.name,
-        "file_type": suffix,
         **removal_counts,
         "clean_text": clean_text,
     }
 
 
 def clean_text_path(output_dir: Path, source_path: Path) -> Path:
-    """Build a clean-text output path for a source file."""
+    """Build the output path for a PDF's cleaned text file.
+
+    Args:
+        output_dir: Directory where cleaned text files are written.
+        source_path: Path to the source PDF file.
+
+    Returns:
+        Path: Output path using the source stem and suffix, for example
+            `abstract_001_pdf_clean.txt`.
+    """
     suffix_name = source_path.suffix.lower().lstrip(".")
     return output_dir / f"{source_path.stem}_{suffix_name}_clean.txt"
 
 
 def supported_input_files(input_dir: Path) -> list[Path]:
-    """List supported input files from the raw abstracts directory."""
+    """List PDF input files from the raw abstracts directory.
+
+    Args:
+        input_dir: Directory to scan for input files.
+
+    Returns:
+        list[Path]: Sorted PDF file paths. Temporary Office lock files are
+            excluded if present.
+    """
     return sorted(
         path for path in input_dir.iterdir()
         if (
@@ -213,7 +183,20 @@ def supported_input_files(input_dir: Path) -> list[Path]:
 
 
 def resolve_input_path(file_name: str, input_dir: Path) -> Path:
-    """Resolve a CLI file argument to one concrete supported input path."""
+    """Resolve a CLI file argument to one concrete PDF input path.
+
+    Args:
+        file_name: File name, relative path, absolute path, or unique PDF stem
+            provided on the command line.
+        input_dir: Directory used to resolve bare file names and stems.
+
+    Returns:
+        Path: Resolved PDF file path.
+
+    Raises:
+        FileNotFoundError: If the argument cannot be resolved to a file.
+        ValueError: If a stem matches multiple PDF files.
+    """
     candidate = Path(file_name)
     if not candidate.is_absolute() and candidate.parent == Path("."):
         candidate = input_dir / candidate
@@ -241,7 +224,15 @@ def resolve_input_path(file_name: str, input_dir: Path) -> Path:
 
 
 def read_csv_rows(csv_path: Path) -> list[Row]:
-    """Read existing aggregate rows from a CSV file."""
+    """Read existing aggregate rows from a CSV file.
+
+    Args:
+        csv_path: Path to the CSV aggregate file.
+
+    Returns:
+        list[Row]: Rows normalised to `CSV_FIELDNAMES`. Missing files return an
+            empty list, and missing row values are returned as empty strings.
+    """
     if not csv_path.exists():
         return []
     csv.field_size_limit(10_000_000)
@@ -254,7 +245,15 @@ def read_csv_rows(csv_path: Path) -> list[Row]:
 
 
 def read_json_rows(json_path: Path) -> list[Row]:
-    """Read existing aggregate rows from a JSON file."""
+    """Read existing aggregate rows from a JSON file.
+
+    Args:
+        json_path: Path to the JSON aggregate file.
+
+    Returns:
+        list[Row]: Dictionary rows normalised to `CSV_FIELDNAMES`. Missing
+            files, non-list JSON data, and non-dictionary list items are ignored.
+    """
     if not json_path.exists():
         return []
     with json_path.open(encoding="utf-8") as f:
@@ -274,7 +273,16 @@ def existing_rows(
     csv_path: Path,
     json_path: Path,
 ) -> list[Row]:
-    """Find the first available aggregate output to seed single-file runs."""
+    """Find existing aggregate rows for a targeted single-file run.
+
+    Args:
+        csv_path: Path to the CSV aggregate file.
+        json_path: Path to the JSON aggregate file.
+
+    Returns:
+        list[Row]: Rows from the first non-empty aggregate source, preferring
+            CSV over JSON. Returns an empty list when neither source has rows.
+    """
     for path, reader in (
         (csv_path, read_csv_rows),
         (json_path, read_json_rows),
@@ -286,7 +294,16 @@ def existing_rows(
 
 
 def upsert_rows(existing: list[Row], processed: list[Row]) -> list[Row]:
-    """Replace or add processed rows while preserving other existing rows."""
+    """Merge processed rows into existing aggregate rows by file name.
+
+    Args:
+        existing: Previously stored aggregate rows.
+        processed: Newly processed rows that should replace matching file names
+            or be added when no match exists.
+
+    Returns:
+        list[Row]: Merged rows sorted by `file_name`.
+    """
     rows_by_file = {row["file_name"]: row for row in existing}
     for row in processed:
         rows_by_file[row["file_name"]] = row
@@ -294,7 +311,16 @@ def upsert_rows(existing: list[Row], processed: list[Row]) -> list[Row]:
 
 
 def write_csv(rows: list[Row], csv_path: Path) -> None:
-    """Write aggregate rows to CSV."""
+    """Write aggregate rows to a CSV file.
+
+    Args:
+        rows: Rows to write using `CSV_FIELDNAMES`.
+        csv_path: Destination CSV path. The parent directory is created if
+            needed.
+
+    Returns:
+        None.
+    """
     csv_path.parent.mkdir(exist_ok=True)
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
@@ -303,7 +329,16 @@ def write_csv(rows: list[Row], csv_path: Path) -> None:
 
 
 def write_json(rows: list[Row], json_path: Path) -> None:
-    """Write aggregate rows to JSON."""
+    """Write aggregate rows to a JSON file.
+
+    Args:
+        rows: Rows to serialise as JSON.
+        json_path: Destination JSON path. The parent directory is created if
+            needed.
+
+    Returns:
+        None.
+    """
     json_path.parent.mkdir(exist_ok=True)
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False, indent=2)
@@ -311,13 +346,25 @@ def write_json(rows: list[Row], json_path: Path) -> None:
 
 
 def get_current_time_data() -> str:
-    """Return date-time text for output logging."""
+    """Return date-time text for output logging.
+
+    Returns:
+        str: Current local date and time formatted as `DD_MM_YYYY__HH_MM`.
+    """
     now = datetime.now()
     return datetime.strftime(now, '%d_%m_%Y__%H_%M')
 
 
 def main() -> None:
-    """Run the abstract anonymisation pipeline from the CLI."""
+    """Run the PDF anonymisation pipeline from the CLI.
+
+    Returns:
+        None.
+
+    Raises:
+        SystemExit: If the input folder is missing, the requested file cannot
+            be resolved, or the requested file is not a PDF.
+    """
     args = parse_args()
     input_dir = Path(INPUT_FOLDER)
     output_dir = Path(OUTPUT_FOLDER)
@@ -353,7 +400,6 @@ def main() -> None:
         clean_file.write_text(result["clean_text"], encoding="utf-8")
         rows.append({
             "file_name": result["file_name"],
-            "file_type": result["file_type"],
             "run_id": run_id,
             "emails_removed_count": result["emails_removed_count"],
             "orcids_removed_count": result["orcids_removed_count"],
