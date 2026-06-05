@@ -26,5 +26,6 @@ Outputs are written to:
 Firstly aggregates all files in the given folder.
 Secondly checks if there are any non pdf files. 
  - If so, converts them to pdf via `convert_to_pdf.py`
+ - Any workbooks or amalgamation of pdfs is handled separately via `split_pdf.py`
  - Since all files are pdf now, proceed to anonymise with `anonymise_abstracts.py`
  Anonymise assumes all files are pdfs and are located in `abstracts_raw/`.

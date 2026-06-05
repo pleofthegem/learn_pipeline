@@ -7,8 +7,8 @@ from pathlib import Path
 
 AGGREGATED_FOLDER: str = "abstracts_aggregated"
 PDF_OUTPUT_FOLDER: str = "abstracts_raw"
-PDF_SUFFIX: str = ".pdf"
 OFFICE_SUFFIXES: set[str] = {".doc", ".docx", ".ppt", ".pptx"}
+SUPPORTED_SUFFIXES: set[str] = {'.pdf', *OFFICE_SUFFIXES}
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,14 +33,16 @@ def aggregate_files(
     input_folder: Path,
     aggregate_dir: Path = Path(AGGREGATED_FOLDER),
 ) -> list[Path]:
-    """Copy every file under an input folder into one aggregate folder.
-
+    """Copy every supported file under an input folder into one aggregate folder.
+Exclude unsupported files.
+Fails if the output folder is the same as the input folder
     Args:
-        input_folder: Root folder to scan for files, including nested files.
+        input_folder: Root folder to scan for supported files, including nested
+            files.
         aggregate_dir: Destination folder that receives copied files.
 
     Returns:
-        list[Path]: Paths to copied files in the aggregate folder.
+        list[Path]: Paths to copied supported files in the aggregate folder.
     """
     input_folder = Path(input_folder)
     aggregate_dir = Path(aggregate_dir)
@@ -52,6 +54,9 @@ def aggregate_files(
         if not path.is_file():
             continue
         if path.resolve().is_relative_to(aggregate_dir_resolved):
+            continue
+        if path.suffix.lower() not in SUPPORTED_SUFFIXES:
+            # If unsupported then don't consider it.
             continue
 
         relative_path = path.relative_to(input_folder)
@@ -110,6 +115,9 @@ def copy_pdf(path: Path, output_dir: Path) -> Path:
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     destination = output_dir / path.name
+    if path.resolve() == destination.resolve():
+        return destination
+
     shutil.copy2(path, destination)
     return destination
 
@@ -190,7 +198,8 @@ def main() -> None:
         None.
     """
     args = parse_args()
-    aggregated_files = aggregate_files(Path(args.input_folder))
+    aggregate_dir = Path(AGGREGATED_FOLDER)
+    aggregated_files = aggregate_files(Path(args.input_folder), aggregate_dir)
     pdf_files = convert_all_to_pdf(
         files=aggregated_files,
         output_dir=Path(PDF_OUTPUT_FOLDER),

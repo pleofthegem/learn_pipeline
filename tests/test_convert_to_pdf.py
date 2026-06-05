@@ -34,6 +34,20 @@ def test_aggregate_files_flattens_nested_input_tree(tmp_path: Path) -> None:
     ) == "nested"
 
 
+def test_aggregate_files_skips_unsupported_file_types(tmp_path: Path) -> None:
+    """Check that unsupported files are not copied into the aggregate folder."""
+    input_folder = tmp_path / "input"
+    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    input_folder.mkdir()
+    (input_folder / "paper.pdf").write_text("pdf", encoding="utf-8")
+    (input_folder / "notes.txt").write_text("txt", encoding="utf-8")
+
+    copied = aggregate_files(input_folder, aggregate_dir)
+
+    assert copied == [aggregate_dir / "paper.pdf"]
+    assert not (aggregate_dir / "notes.txt").exists()
+
+
 def test_aggregate_files_skips_aggregate_folder_inside_input(tmp_path: Path) -> None:
     """Check that aggregation does not copy files from its own output folder."""
     input_folder = tmp_path / "input"
@@ -57,6 +71,17 @@ def test_convert_file_to_pdf_copies_existing_pdf(tmp_path: Path) -> None:
 
     assert result == output_dir / "paper.pdf"
     assert result.read_text(encoding="utf-8") == "pdf content"
+
+
+def test_convert_file_to_pdf_keeps_pdf_already_in_output_dir(tmp_path: Path) -> None:
+    """Check that PDF inputs are left in place when already in the output folder."""
+    source = tmp_path / "paper.pdf"
+    source.write_text("pdf content", encoding="utf-8")
+
+    result = convert_file_to_pdf(source, tmp_path)
+
+    assert result == source
+    assert source.read_text(encoding="utf-8") == "pdf content"
 
 
 def test_convert_file_to_pdf_dispatches_office_suffix(
@@ -116,8 +141,9 @@ def test_main_converts_to_abstracts_raw(
     def fake_parse_args() -> object:
         return type("Args", (), {"input_folder": str(input_folder)})()
 
-    def fake_aggregate_files(path: Path) -> list[Path]:
+    def fake_aggregate_files(path: Path, aggregate_dir: Path) -> list[Path]:
         assert path == input_folder
+        assert aggregate_dir == Path(AGGREGATED_FOLDER)
         return [tmp_path / "paper.pdf"]
 
     def fake_convert_all_to_pdf(files: list[Path], output_dir: Path) -> list[Path]:
