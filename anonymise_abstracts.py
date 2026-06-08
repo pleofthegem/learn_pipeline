@@ -172,6 +172,7 @@ def supported_input_files(input_dir: Path) -> list[Path]:
         list[Path]: Sorted PDF file paths. Temporary Office lock files are
             excluded if present.
     """
+    input_dir.mkdir(parents=True, exist_ok=True)
     return sorted(
         path for path in input_dir.iterdir()
         if (
@@ -321,7 +322,7 @@ def write_csv(rows: list[Row], csv_path: Path) -> None:
     Returns:
         None.
     """
-    csv_path.parent.mkdir(exist_ok=True)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
         writer.writeheader()
@@ -339,7 +340,7 @@ def write_json(rows: list[Row], json_path: Path) -> None:
     Returns:
         None.
     """
-    json_path.parent.mkdir(exist_ok=True)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False, indent=2)
         f.write("\n")
@@ -371,10 +372,8 @@ def main() -> None:
     csv_path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV
     json_path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON
 
-    if not input_dir.exists():
-        raise SystemExit(f"Input folder not found: {input_dir}")
-
-    output_dir.mkdir(exist_ok=True)
+    input_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     paths: list[Path]
     if args.file_name:

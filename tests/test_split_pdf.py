@@ -199,6 +199,28 @@ def test_split_combined_pdfs_writes_metadata_files(tmp_path: Path) -> None:
     assert not (output_folder / METADATA_JSON).exists()
 
 
+def test_split_combined_pdfs_creates_missing_folders_for_empty_run(
+    tmp_path: Path,
+) -> None:
+    """Check that missing input/output folders do not break an empty run."""
+    input_folder = tmp_path / "combined"
+    output_folder = tmp_path / "raw"
+    staging_folder = tmp_path / "split_staging"
+
+    metadata = split_combined_pdfs(
+        input_folder=input_folder,
+        output_folder=output_folder,
+        staging_folder=staging_folder,
+    )
+
+    assert metadata == []
+    assert input_folder.exists()
+    assert output_folder.exists()
+    assert staging_folder.exists()
+    assert (staging_folder / METADATA_CSV).exists()
+    assert (staging_folder / METADATA_JSON).exists()
+
+
 def test_split_folder_rejects_staging_folder_as_output_folder(
     tmp_path: Path,
 ) -> None:

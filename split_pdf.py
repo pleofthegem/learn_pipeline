@@ -63,10 +63,11 @@ def split_combined_pdfs(
     Returns:
         list[dict[str, object]]: Metadata rows for every generated PDF.
     """
+    input_folder = Path(input_folder)
     output_folder = Path(output_folder)
     staging_folder = Path(staging_folder)
     metadata = split_folder(
-        input_folder=Path(input_folder),
+        input_folder=input_folder,
         output_folder=output_folder,
         staging_folder=staging_folder,
     )
@@ -104,6 +105,7 @@ def split_folder(
     if staging_folder_resolved == output_folder_resolved:
         raise ValueError("Staging folder cannot be the output folder.")
 
+    input_folder.mkdir(parents=True, exist_ok=True)
     staging_folder.mkdir(parents=True, exist_ok=True)
     output_folder.mkdir(parents=True, exist_ok=True)
     clean_folder(staging_folder)

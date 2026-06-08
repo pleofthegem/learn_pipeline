@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import anonymise_abstracts
 from anonymise_abstracts import (
     anonymise_text,
     anonymise_text_with_counts,
@@ -339,3 +340,23 @@ def test_write_json_creates_parent_directory_and_writes_rows(tmp_path: Path) -> 
     write_json(rows, json_path)
 
     assert json.loads(json_path.read_text(encoding="utf-8")) == rows
+
+
+def test_main_creates_missing_folders_for_empty_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check that missing pipeline folders do not break an empty run."""
+
+    def fake_parse_args() -> object:
+        return type("Args", (), {"file_name": None})()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(anonymise_abstracts, "parse_args", fake_parse_args)
+
+    anonymise_abstracts.main()
+
+    assert (tmp_path / "abstracts_raw").exists()
+    assert (tmp_path / "abstracts_clean").exists()
+    assert (tmp_path / "abstract_csv" / "anonymised_abstracts.csv").exists()
+    assert (tmp_path / "abstract_json" / "anonymised_abstracts.json").exists()

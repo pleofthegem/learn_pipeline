@@ -48,6 +48,20 @@ def test_aggregate_files_skips_unsupported_file_types(tmp_path: Path) -> None:
     assert not (aggregate_dir / "notes.txt").exists()
 
 
+def test_aggregate_files_creates_missing_input_and_aggregate_folders(
+    tmp_path: Path,
+) -> None:
+    """Check that missing aggregation folders do not break an empty run."""
+    input_folder = tmp_path / "missing_input"
+    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+
+    copied = aggregate_files(input_folder, aggregate_dir)
+
+    assert copied == []
+    assert input_folder.exists()
+    assert aggregate_dir.exists()
+
+
 def test_aggregate_files_skips_aggregate_folder_inside_input(tmp_path: Path) -> None:
     """Check that aggregation does not copy files from its own output folder."""
     input_folder = tmp_path / "input"
@@ -128,6 +142,14 @@ def test_convert_all_to_pdf_processes_each_file(tmp_path: Path) -> None:
         output_dir / "first.pdf",
         output_dir / "second.pdf",
     ]
+
+
+def test_convert_all_to_pdf_creates_output_dir_for_empty_input(tmp_path: Path) -> None:
+    """Check that an empty conversion run still creates the output folder."""
+    output_dir = tmp_path / "pdfs"
+
+    assert convert_all_to_pdf([], output_dir) == []
+    assert output_dir.exists()
 
 
 def test_main_converts_to_abstracts_raw(

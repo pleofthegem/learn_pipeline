@@ -46,6 +46,7 @@ Fails if the output folder is the same as the input folder
     """
     input_folder = Path(input_folder)
     aggregate_dir = Path(aggregate_dir)
+    input_folder.mkdir(parents=True, exist_ok=True)
     aggregate_dir.mkdir(parents=True, exist_ok=True)
     aggregate_dir_resolved = aggregate_dir.resolve()
 
@@ -188,6 +189,7 @@ def convert_all_to_pdf(files: list[Path], output_dir: Path) -> list[Path]:
     Returns:
         list[Path]: Paths to generated or copied PDFs.
     """
+    output_dir.mkdir(parents=True, exist_ok=True)
     return [convert_file_to_pdf(path, output_dir) for path in files]
 
 
