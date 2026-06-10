@@ -398,6 +398,29 @@ def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
     return "; ".join(authors)
 
 
+def standardise_keywords(keywords: str) -> str:
+    """Normalise keyword separators to semicolons.
+
+    Args:
+        keywords: Raw keyword text extracted from a PDF.
+
+    Returns:
+        str: Keyword text split on the detected separator and joined with
+            `; `. Semicolon is preferred when present, otherwise comma is used.
+    """
+    keywords = keywords.strip()
+    if ";" in keywords:
+        separator = ";"
+    elif "," in keywords:
+        separator = ","
+    else:
+        return keywords
+
+    parts = [part.strip()
+             for part in keywords.split(separator) if part.strip()]
+    return "; ".join(parts)
+
+
 def extract_keywords(lines: list[str]) -> str:
     """Extract keywords from a `Keywords:` or `Key words:` line.
 
@@ -408,7 +431,6 @@ def extract_keywords(lines: list[str]) -> str:
         str: Keyword text after the heading, or an empty string when no keyword
             line is found.
     """
-    # TODO: standardise keyword separator, seems to use ';'
     for index, line in enumerate(lines):
         match = KEYWORDS_RE.match(line)
         if not match:
@@ -416,9 +438,9 @@ def extract_keywords(lines: list[str]) -> str:
 
         keywords = match.group(1).strip()
         if keywords:
-            return keywords
+            return standardise_keywords(keywords)
         if index + 1 < len(lines):
-            return lines[index + 1].strip()
+            return standardise_keywords(lines[index + 1])
     return ""
 
 
