@@ -9,9 +9,12 @@ from pathlib import Path
 
 import fitz
 
+# Default input folder for combined abstract e-books.
+INPUT_FOLDER = "combined_input"
+# Staging folder for human inspection.
 SPLIT_FOLDER = "abstracts_split"
+# Shared general input folder for other scripts like anonymise_abstracts.py and extract_abstract_metadata.py
 OUTPUT_FOLDER = "abstracts_raw"
-# Could save metadata under a single folder
 METADATA_CSV = "split_abstracts.csv"
 METADATA_JSON = "split_abstracts.json"
 PDF_SUFFIX = ".pdf"
@@ -34,13 +37,20 @@ def parse_args() -> argparse.Namespace:
     """Parse command-line arguments.
 
     Returns:
-        argparse.Namespace: Parsed arguments containing the input folder.
+        argparse.Namespace: Parsed arguments containing `input_folder`, the
+            folder of combined PDFs to split. Defaults to `INPUT_FOLDER` when
+            omitted.
     """
     parser = argparse.ArgumentParser(
         description="Split folders of combined abstract PDFs into single PDFs."
     )
-    parser.add_argument("input_folder", type=str,
-                        help="Folder of combined PDFs.")
+    parser.add_argument(
+        "input_folder",
+        nargs="?",
+        default=INPUT_FOLDER,
+        type=str,
+        help="Folder of combined PDFs.",
+    )
     return parser.parse_args()
 
 # Main API for the rest of the repo.
@@ -445,8 +455,6 @@ def clean_lines(lines: list[str]) -> list[str]:
 
 
 def normalise(text: str) -> str:
-    # Possibly overengineered generated code.
-    # .strip().lower() may be enough.
     """Normalise text for title matching.
 
     Args:
