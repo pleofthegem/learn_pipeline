@@ -79,21 +79,25 @@ def run_pipeline(
     Returns:
         dict[str, int]: Counts from each pipeline stage.
     """
-    aggregated_files, converted_pdfs = convert_to_pdf.convert_inputs_to_pdfs(
+    print('Collecting files to convert...')
+    _, converted_pdfs = convert_to_pdf.convert_inputs_to_pdfs(
         input_folder=Path(input_folder),
         aggregate_dir=Path(aggregate_folder),
         output_dir=Path(raw_folder),
     )
+    print('Splitting combined pdfs...')
     split_metadata = split_pdf.split_combined_pdfs(
         input_folder=Path(combined_input_folder),
         output_folder=Path(raw_folder),
         staging_folder=Path(split_folder),
     )
+    print('Extracting data from abstracts...')
     metadata_rows = extract_abstract_data.extract_abstract_data(
         input_folder=Path(raw_folder),
         csv_path=Path(extract_csv_path),
         json_path=Path(extract_json_path),
     )
+    print('Anonymising pdfs...')
     anonymised_rows = anonymise_abstracts.anonymise_pdf_abstracts(
         input_dir=Path(raw_folder),
         output_dir=Path(clean_output_folder),
@@ -102,7 +106,6 @@ def run_pipeline(
     )
 
     return {
-        "aggregated_files": len(aggregated_files),
         "converted_pdfs": len(converted_pdfs),
         "split_abstracts": len(split_metadata),
         "metadata_rows": len(metadata_rows),
@@ -122,7 +125,6 @@ def main() -> None:
         combined_input_folder=Path(args.combined_input_folder),
     )
 
-    print(f"Aggregated {counts['aggregated_files']} files.")
     print(f"Converted {counts['converted_pdfs']} PDFs.")
     print(f"Split {counts['split_abstracts']} combined abstracts.")
     print(f"Extracted metadata for {counts['metadata_rows']} PDFs.")

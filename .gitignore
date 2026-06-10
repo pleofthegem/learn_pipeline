@@ -10,3 +10,5 @@ __pycache__/
 *.Identifier
 *.ini
 *.pptx
+.agents
+.pytest_cache

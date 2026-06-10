@@ -5,10 +5,12 @@ import fitz
 import pytest
 
 from split_pdf import (
+    INPUT_FOLDER,
     METADATA_CSV,
     METADATA_JSON,
     find_toc_page_range,
     parse_toc,
+    parse_args,
     split_combined_pdfs,
     split_folder,
 )
@@ -54,6 +56,28 @@ def add_page(pdf: fitz.Document, text: str) -> None:
     """Add a simple page to a test PDF."""
     page = pdf.new_page()
     page.insert_text((72, 72), text, fontsize=12)
+
+
+def test_parse_args_defaults_to_combined_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check that the split CLI can run without an explicit input folder."""
+    monkeypatch.setattr("sys.argv", ["split_pdf.py"])
+
+    args = parse_args()
+
+    assert args.input_folder == INPUT_FOLDER
+
+
+def test_parse_args_accepts_explicit_input_folder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check that an explicit CLI input folder overrides the default."""
+    monkeypatch.setattr("sys.argv", ["split_pdf.py", "custom_combined"])
+
+    args = parse_args()
+
+    assert args.input_folder == "custom_combined"
 
 
 def test_parse_toc_extracts_ids_titles_and_printed_pages(tmp_path: Path) -> None:

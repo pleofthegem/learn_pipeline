@@ -9,7 +9,6 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-# TODO: implement logging
 Row = dict[str, str]
 
 # Locations for saving

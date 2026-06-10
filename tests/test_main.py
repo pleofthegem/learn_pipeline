@@ -102,7 +102,6 @@ def test_run_pipeline_calls_each_module_api_in_order(
 
     assert calls == ["convert", "split", "extract", "anonymise"]
     assert counts == {
-        "aggregated_files": 1,
         "converted_pdfs": 1,
         "split_abstracts": 1,
         "metadata_rows": 1,
