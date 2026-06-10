@@ -4,6 +4,12 @@
 On Unix-like system, intall via sudo apt install libreoffice
 ## Usage
 
+Run the full pipeline:
+
+```bash
+./.venv/bin/python main.py
+```
+
 Process every PDF file in `abstracts_raw`:
 
 ```bash
