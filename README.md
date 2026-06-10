@@ -4,7 +4,7 @@
 On Unix-like system, intall via sudo apt install libreoffice
 ## Usage
 
-Run the full pipeline:
+### Run the full pipeline:
 
 ```bash
 ./.venv/bin/python main.py
@@ -16,7 +16,7 @@ Process every PDF file in `abstracts_raw`:
 ./.venv/bin/python anonymise_abstracts.py
 ```
 
-Process a single file:
+### Anonymise a single file:
 
 ```bash
 ./.venv/bin/python anonymise_abstracts.py abstract_001.pdf
@@ -27,6 +27,28 @@ Outputs are written to:
 - `abstracts_clean/` for cleaned text files
 - `abstract_csv/anonymised_abstracts.csv` for CSV metadata and text
 - `abstract_json/anonymised_abstracts.json` for JSON metadata and text
+
+### Split pdfs:
+```bash
+./venv/bin/python split_pdf.py
+```
+Outputs are written to:
+
+- `abstracts_split` as an intermediary output
+- `abstracts_raw` as the final output
+
+## Convert file types to PDF
+
+To convert the assortment of files to pdf, run
+```bash
+./venv/bin/python convert_to_pdf.py
+```
+Currently, this converts files of type 
+- doc
+- docx
+- pptx
+
+Output is sent to `abstracts_raw`
 
 ## Logic
 Firstly aggregates all files in the given folder.
