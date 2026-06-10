@@ -7,6 +7,7 @@ import pytest
 from conftest import write_sample_pdf
 from extract_abstract_data import (
     clean_author_line,
+    extract_abstract_data,
     extract_abstract_metadata,
     pdf_input_files,
     process_pdf,
@@ -142,3 +143,27 @@ def test_write_csv_and_json_outputs_metadata(
 
     assert csv_rows == rows
     assert json_rows == rows
+
+
+def test_extract_abstract_data_is_public_pipeline_api(
+    tmp_path: Path,
+    dasgupta_like_pdf: Path,
+) -> None:
+    """Check that the public extraction API writes CSV and JSON metadata."""
+    input_dir = tmp_path / "abstracts_raw"
+    input_dir.mkdir()
+    (input_dir / dasgupta_like_pdf.name).write_bytes(
+        dasgupta_like_pdf.read_bytes()
+    )
+    csv_path = tmp_path / "abstract_csv" / "abstract_metadata.csv"
+    json_path = tmp_path / "abstract_json" / "abstract_metadata.json"
+
+    rows = extract_abstract_data(
+        input_folder=input_dir,
+        csv_path=csv_path,
+        json_path=json_path,
+    )
+
+    assert [row["filename"] for row in rows] == [dasgupta_like_pdf.name]
+    assert csv_path.exists()
+    assert json_path.exists()

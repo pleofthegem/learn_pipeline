@@ -193,6 +193,31 @@ def convert_all_to_pdf(files: list[Path], output_dir: Path) -> list[Path]:
     return [convert_file_to_pdf(path, output_dir) for path in files]
 
 
+def convert_inputs_to_pdfs(
+    input_folder: Path,
+    aggregate_dir: Path = Path(AGGREGATED_FOLDER),
+    output_dir: Path = Path(PDF_OUTPUT_FOLDER),
+) -> tuple[list[Path], list[Path]]:
+    """Aggregate supported source files and convert them to PDFs.
+
+    Args:
+        input_folder: Root folder to scan for supported source files.
+        aggregate_dir: Intermediary folder that receives flattened source
+            files before conversion.
+        output_dir: Final folder that receives PDF files.
+
+    Returns:
+        tuple[list[Path], list[Path]]: A tuple containing the aggregated source
+            file paths and the resulting PDF paths.
+    """
+    aggregated_files = aggregate_files(Path(input_folder), Path(aggregate_dir))
+    pdf_files = convert_all_to_pdf(
+        files=aggregated_files,
+        output_dir=Path(output_dir),
+    )
+    return aggregated_files, pdf_files
+
+
 def main() -> None:
     """Run aggregation followed by PDF conversion from the CLI.
 
@@ -200,11 +225,8 @@ def main() -> None:
         None.
     """
     args = parse_args()
-    aggregate_dir = Path(AGGREGATED_FOLDER)
-    aggregated_files = aggregate_files(Path(args.input_folder), aggregate_dir)
-    pdf_files = convert_all_to_pdf(
-        files=aggregated_files,
-        output_dir=Path(PDF_OUTPUT_FOLDER),
+    aggregated_files, pdf_files = convert_inputs_to_pdfs(
+        input_folder=Path(args.input_folder),
     )
 
     print(f"Aggregated {len(aggregated_files)} files.")

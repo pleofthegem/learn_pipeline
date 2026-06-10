@@ -408,6 +408,7 @@ def extract_keywords(lines: list[str]) -> str:
         str: Keyword text after the heading, or an empty string when no keyword
             line is found.
     """
+    # TODO: standardise keyword separator, seems to use ';'
     for index, line in enumerate(lines):
         match = KEYWORDS_RE.match(line)
         if not match:
@@ -562,6 +563,27 @@ def write_json(rows: list[Row], json_path: Path) -> None:
         f.write("\n")
 
 
+def extract_abstract_data(
+    input_folder: Path = Path(INPUT_FOLDER),
+    csv_path: Path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV,
+    json_path: Path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON,
+) -> list[Row]:
+    """Extract abstract metadata and write CSV and JSON outputs.
+
+    Args:
+        input_folder: Directory containing PDF abstracts.
+        csv_path: Destination CSV metadata path.
+        json_path: Destination JSON metadata path.
+
+    Returns:
+        list[Row]: Metadata rows extracted from the input PDFs.
+    """
+    rows = extract_abstract_metadata(Path(input_folder))
+    write_csv(rows, Path(csv_path))
+    write_json(rows, Path(json_path))
+    return rows
+
+
 def main() -> None:
     """Run abstract metadata extraction from the CLI.
 
@@ -569,12 +591,13 @@ def main() -> None:
         None.
     """
     args = parse_args()
-    rows = extract_abstract_metadata(Path(args.input_folder))
     csv_path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV
     json_path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON
-
-    write_csv(rows, csv_path)
-    write_json(rows, json_path)
+    rows = extract_abstract_data(
+        input_folder=Path(args.input_folder),
+        csv_path=csv_path,
+        json_path=json_path,
+    )
 
     print(f"Processed {len(rows)} files.")
     print(f"CSV created: {csv_path}")

@@ -356,34 +356,46 @@ def get_current_time_data() -> str:
     return datetime.strftime(now, '%d_%m_%Y__%H_%M')
 
 
-def main() -> None:
-    """Run the PDF anonymisation pipeline from the CLI.
+def anonymise_pdf_abstracts(
+    input_dir: Path = Path(INPUT_FOLDER),
+    output_dir: Path = Path(OUTPUT_FOLDER),
+    csv_path: Path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV,
+    json_path: Path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON,
+    file_name: str | None = None,
+) -> list[Row]:
+    """Anonymise PDF abstracts and write clean text, CSV, and JSON outputs.
+
+    Args:
+        input_dir: Folder containing raw PDF abstracts.
+        output_dir: Folder where cleaned text files are written.
+        csv_path: Destination CSV aggregate path.
+        json_path: Destination JSON aggregate path.
+        file_name: Optional single PDF file name, path, or unique stem to
+            process. When omitted, every PDF in `input_dir` is processed.
 
     Returns:
-        None.
+        list[Row]: Rows processed during this run. For a single-file run, this
+            excludes previously existing rows that were preserved in the output
+            aggregate files.
 
     Raises:
-        SystemExit: If the input folder is missing, the requested file cannot
-            be resolved, or the requested file is not a PDF.
+        FileNotFoundError: If `file_name` cannot be resolved.
+        ValueError: If `file_name` is ambiguous or resolves to a non-PDF file.
     """
-    args = parse_args()
-    input_dir = Path(INPUT_FOLDER)
-    output_dir = Path(OUTPUT_FOLDER)
-    csv_path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV
-    json_path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+    csv_path = Path(csv_path)
+    json_path = Path(json_path)
 
     input_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     paths: list[Path]
-    if args.file_name:
-        try:
-            paths = [resolve_input_path(args.file_name, input_dir)]
-        except (FileNotFoundError, ValueError) as exc:
-            raise SystemExit(str(exc)) from exc
+    if file_name:
+        paths = [resolve_input_path(file_name, input_dir)]
         if paths[0].suffix.lower() not in SUPPORTED_SUFFIXES:
             supported = ", ".join(sorted(SUPPORTED_SUFFIXES))
-            raise SystemExit(
+            raise ValueError(
                 f"Unsupported file type: {paths[0].suffix}. "
                 f"Supported types: {supported}"
             )
@@ -408,7 +420,7 @@ def main() -> None:
         })
 
     output_rows: list[Row] = rows
-    if args.file_name:
+    if file_name:
         # Keep previous aggregate rows so targeted runs do not discard work.
         output_rows = upsert_rows(
             existing_rows(csv_path, json_path),
@@ -417,6 +429,27 @@ def main() -> None:
 
     write_csv(output_rows, csv_path)
     write_json(output_rows, json_path)
+    return rows
+
+
+def main() -> None:
+    """Run the PDF anonymisation pipeline from the CLI.
+
+    Returns:
+        None.
+
+    Raises:
+        SystemExit: If the input folder is missing, the requested file cannot
+            be resolved, or the requested file is not a PDF.
+    """
+    args = parse_args()
+    try:
+        rows = anonymise_pdf_abstracts(file_name=args.file_name)
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+
+    csv_path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV
+    json_path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON
 
     print(f"Processed {len(rows)} files.")
     print(f"CSV created: {csv_path}")

@@ -9,6 +9,7 @@ from convert_to_pdf import (
     aggregate_files,
     convert_all_to_pdf,
     convert_file_to_pdf,
+    convert_inputs_to_pdfs,
 )
 
 
@@ -152,6 +153,43 @@ def test_convert_all_to_pdf_creates_output_dir_for_empty_input(tmp_path: Path) -
     assert output_dir.exists()
 
 
+def test_convert_inputs_to_pdfs_is_public_pipeline_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check that the public conversion API aggregates then converts."""
+    input_folder = tmp_path / "input"
+    aggregate_dir = tmp_path / "aggregate"
+    expected_output_dir = tmp_path / "pdfs"
+    aggregated = [aggregate_dir / "paper.docx"]
+    converted = [expected_output_dir / "paper.pdf"]
+
+    def fake_aggregate_files(path: Path, destination: Path) -> list[Path]:
+        assert path == input_folder
+        assert destination == aggregate_dir
+        return aggregated
+
+    def fake_convert_all_to_pdf(
+        files: list[Path],
+        output_dir: Path,
+    ) -> list[Path]:
+        assert files == aggregated
+        assert output_dir == expected_output_dir
+        return converted
+
+    monkeypatch.setattr(convert_to_pdf, "aggregate_files", fake_aggregate_files)
+    monkeypatch.setattr(convert_to_pdf, "convert_all_to_pdf", fake_convert_all_to_pdf)
+
+    assert convert_inputs_to_pdfs(
+        input_folder,
+        aggregate_dir,
+        expected_output_dir,
+    ) == (
+        aggregated,
+        converted,
+    )
+
+
 def test_main_converts_to_abstracts_raw(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -163,18 +201,17 @@ def test_main_converts_to_abstracts_raw(
     def fake_parse_args() -> object:
         return type("Args", (), {"input_folder": str(input_folder)})()
 
-    def fake_aggregate_files(path: Path, aggregate_dir: Path) -> list[Path]:
-        assert path == input_folder
-        assert aggregate_dir == Path(AGGREGATED_FOLDER)
-        return [tmp_path / "paper.pdf"]
-
-    def fake_convert_all_to_pdf(files: list[Path], output_dir: Path) -> list[Path]:
-        assert files == [tmp_path / "paper.pdf"]
-        assert output_dir == Path(PDF_OUTPUT_FOLDER)
-        return [output_dir / "paper.pdf"]
+    def fake_convert_inputs_to_pdfs(
+        input_folder: Path,
+    ) -> tuple[list[Path], list[Path]]:
+        assert input_folder == tmp_path / "input"
+        return [tmp_path / "paper.docx"], [Path(PDF_OUTPUT_FOLDER) / "paper.pdf"]
 
     monkeypatch.setattr(convert_to_pdf, "parse_args", fake_parse_args)
-    monkeypatch.setattr(convert_to_pdf, "aggregate_files", fake_aggregate_files)
-    monkeypatch.setattr(convert_to_pdf, "convert_all_to_pdf", fake_convert_all_to_pdf)
+    monkeypatch.setattr(
+        convert_to_pdf,
+        "convert_inputs_to_pdfs",
+        fake_convert_inputs_to_pdfs,
+    )
 
     convert_to_pdf.main()

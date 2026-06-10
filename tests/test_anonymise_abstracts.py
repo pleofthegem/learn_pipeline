@@ -6,6 +6,7 @@ import pytest
 
 import anonymise_abstracts
 from anonymise_abstracts import (
+    anonymise_pdf_abstracts,
     anonymise_text,
     anonymise_text_with_counts,
     clean_text_path,
@@ -340,6 +341,31 @@ def test_write_json_creates_parent_directory_and_writes_rows(tmp_path: Path) -> 
     write_json(rows, json_path)
 
     assert json.loads(json_path.read_text(encoding="utf-8")) == rows
+
+
+def test_anonymise_pdf_abstracts_is_public_pipeline_api(
+    tmp_path: Path,
+    sample_input_dir: Path,
+) -> None:
+    """Check that the public anonymisation API writes all expected outputs."""
+    output_dir = tmp_path / "abstracts_clean"
+    csv_path = tmp_path / "abstract_csv" / "anonymised_abstracts.csv"
+    json_path = tmp_path / "abstract_json" / "anonymised_abstracts.json"
+
+    rows = anonymise_pdf_abstracts(
+        input_dir=sample_input_dir,
+        output_dir=output_dir,
+        csv_path=csv_path,
+        json_path=json_path,
+    )
+
+    assert [row["file_name"] for row in rows] == [
+        "abstract_001.pdf",
+        "abstract_002.pdf",
+    ]
+    assert len(list(output_dir.glob("*_clean.txt"))) == 2
+    assert csv_path.exists()
+    assert json_path.exists()
 
 
 def test_main_creates_missing_folders_for_empty_run(
