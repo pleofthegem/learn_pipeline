@@ -46,11 +46,16 @@ def test_run_pipeline_calls_each_module_api_in_order(
         input_folder: Path,
         csv_path: Path,
         json_path: Path,
+        default_additional_info: dict[str, str] | None = None,
     ) -> list[dict[str, str]]:
         calls.append("extract")
         assert input_folder == raw_folder
         assert csv_path == extract_csv_path
         assert json_path == extract_json_path
+        assert default_additional_info == {
+            "name": "Default conference",
+            "place": "Default place",
+        }
         return [{"filename": "paper.pdf"}]
 
     def fake_anonymise_pdf_abstracts(
@@ -98,6 +103,10 @@ def test_run_pipeline_calls_each_module_api_in_order(
         extract_json_path=extract_json_path,
         anonymise_csv_path=anonymise_csv_path,
         anonymise_json_path=anonymise_json_path,
+        default_additional_info={
+            "name": "Default conference",
+            "place": "Default place",
+        },
     )
 
     assert calls == ["convert", "split", "extract", "anonymise"]

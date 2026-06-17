@@ -10,6 +10,52 @@ On Unix-like system, intall via sudo apt install libreoffice
 ./.venv/bin/python main.py
 ```
 
+If the conference name and place are known for a batch, pass them as optional
+defaults. These values are only used when an individual PDF does not contain
+conference metadata itself:
+
+```bash
+./.venv/bin/python main.py \
+  --conference-name "IWA Example Conference" \
+  --conference-place "Example City, Example Country"
+```
+
+### Extract abstract metadata:
+
+```bash
+./.venv/bin/python extract_abstract_data.py
+```
+
+This reads PDFs from `abstracts_raw` and writes:
+
+- `abstract_csv/abstract_metadata.csv`
+- `abstract_json/abstract_metadata.json`
+
+Each row includes `additional_info` with this shape:
+
+```json
+{"name": "", "place": ""}
+```
+
+The extractor first tries to read the conference name and place from the PDF
+header. If several PDFs in the same extraction batch contain the same
+conference metadata, that repeated value is used for PDFs where
+`additional_info` is fully empty. Rows that already contain a different
+conference name are left alone, so the extractor does not mix a place from one
+event with the name of another event.
+
+If the conference metadata is known in advance, optional batch defaults can
+also fill missing values:
+
+```bash
+./.venv/bin/python extract_abstract_data.py abstracts_raw \
+  --conference-name "IWA Example Conference" \
+  --conference-place "Example City, Example Country"
+```
+
+When no conference metadata can be found and no defaults are supplied,
+`additional_info` is still written with empty strings for `name` and `place`.
+
 Process every PDF file in `abstracts_raw`:
 
 ```bash
@@ -55,6 +101,7 @@ Firstly aggregates all files in the given folder.
 Secondly checks if there are any non pdf files. 
  - If so, converts them to pdf via `convert_to_pdf.py`
  - Any workbooks or amalgamation of pdfs is handled separately via `split_pdf.py`
+ - Extracts title, authors, description, keywords, and optional conference metadata via `extract_abstract_data.py`
  - Since all files are pdf now, proceed to anonymise with `anonymise_abstracts.py`
  Anonymise assumes all files are pdfs and are located in `abstracts_raw/`.
 
@@ -65,6 +112,6 @@ Secondly checks if there are any non pdf files.
  - `abstract_raw` is the folder which assumes everything is an atomic pdf. This is the input folder for anonymise.
 
  ### The outputs are as follows:
- - `abstract_csv`, `abstract_json`, `abstract_clean` are the outputs of the anonymise script. 
+ - `abstract_csv`, `abstract_json`, `abstracts_clean` are the outputs of the anonymise and metadata extraction scripts. 
  - `abstracts_aggregated` is the intermediary output of the conversion script. This pulls together all the files to be converted under one directory. Acts as a staging folder -> `abstract_raw`.
 - `abstracts_split` is the intermediary output for the split pdf script. This also contains `split_abstracts.csv` and `split_abstracts.json` for some metadata about the split.

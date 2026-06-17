@@ -1,6 +1,7 @@
 """Extract high-level abstract metadata from PDF files."""
 
 import argparse
+from collections import Counter
 import csv
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -10,7 +11,9 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
-Row = dict[str, str]
+AdditionalInfo = dict[str, str]
+RowValue = str | AdditionalInfo
+Row = dict[str, RowValue]
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,7 @@ CSV_FIELDNAMES: list[str] = [
     "abstract_authors",
     "abstract_description",
     "abstract_keywords",
+    "additional_info",
 ]
 
 SECTION_HEADINGS: set[str] = {
@@ -70,6 +74,26 @@ ABSTRACT_RE = re.compile(
     r"^\s*abstract(?:\s+of\s+the\s+project)?\s*[:.\-–—]?\s*(.*)$",
     re.IGNORECASE,
 )
+EVENT_KEYWORD_RE = re.compile(
+    r"\b("
+    r"conference|congress|symposium|workshop|summit|forum|meeting|"
+    r"seminar|colloquium|exhibition|expo"
+    r")\b",
+    re.IGNORECASE,
+)
+MONTH_RE = re.compile(
+    r"\b("
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+    r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|sept|oct(?:ober)?|"
+    r"nov(?:ember)?|dec(?:ember)?"
+    r")\b",
+    re.IGNORECASE,
+)
+YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+PLACE_LABEL_RE = re.compile(
+    r"^\s*(?:venue|location|place|host city)\s*[:.\-–—]\s*(.+)$",
+    re.IGNORECASE,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,6 +112,22 @@ def parse_args() -> argparse.Namespace:
         nargs="?",
         default=INPUT_FOLDER,
         help="Folder containing PDF abstracts.",
+        type=str,
+    )
+    parser.add_argument(
+        "--conference-name",
+        default=None,
+        help=(
+            "Default conference name to use when a PDF does not contain one."
+        ),
+        type=str,
+    )
+    parser.add_argument(
+        "--conference-place",
+        default=None,
+        help=(
+            "Default conference place to use when a PDF does not contain one."
+        ),
         type=str,
     )
     return parser.parse_args()
@@ -398,6 +438,239 @@ def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
     return "; ".join(authors)
 
 
+def compact_info_text(text: str) -> str:
+    """Clean one extracted line for event metadata.
+
+    Args:
+        text: Raw PDF text to normalise.
+
+    Returns:
+        str: Text with repeated whitespace collapsed and edge punctuation
+            removed.
+    """
+    text = re.sub(r"\s+", " ", text)
+    return text.strip(" ,;")
+
+
+def title_case_if_all_caps(text: str) -> str:
+    """Convert all-caps event/place text to display casing.
+
+    Args:
+        text: Event or place text extracted from a PDF header.
+
+    Returns:
+        str: Cleaned text, title-cased only when the source is mostly caps.
+    """
+    text = compact_info_text(text)
+    letters = [char for char in text if char.isalpha()]
+    if not letters:
+        return text
+
+    uppercase_ratio = sum(char.isupper() for char in letters) / len(letters)
+    if uppercase_ratio < 0.75:
+        return text
+
+    cased = text.title()
+    cased = re.sub(
+        r"\b(\d+)(St|Nd|Rd|Th)\b",
+        lambda match: f"{match.group(1)}{match.group(2).lower()}",
+        cased,
+    )
+    for acronym in ("IWA", "AI", "UN", "UK", "USA"):
+        cased = re.sub(
+            rf"\b{re.escape(acronym.title())}\b",
+            acronym,
+            cased,
+        )
+    for word in ("And", "At", "By", "For", "In", "Of", "On", "Or", "The", "To"):
+        cased = re.sub(rf"(?<!^)\b{word}\b", word.lower(), cased)
+    return cased
+
+
+def is_date_line(line: str) -> bool:
+    """Check whether a line looks like an event date line.
+
+    Args:
+        line: Candidate PDF header line.
+
+    Returns:
+        bool: `True` when the line contains a year plus either a month name or
+            a numeric date range.
+    """
+    if not YEAR_RE.search(line):
+        return False
+    return bool(MONTH_RE.search(line) or re.search(r"\d{1,2}\s*[-/]\s*\d{1,2}", line))
+
+
+def is_probable_place_line(line: str) -> bool:
+    """Check whether a short header line looks like a venue place.
+
+    Args:
+        line: Candidate PDF header line.
+
+    Returns:
+        bool: `True` for short city/country-style lines, otherwise `False`.
+    """
+    line = compact_info_text(line)
+    if not line or is_contact_line(line) or is_section_heading(line):
+        return False
+    if EVENT_KEYWORD_RE.search(line) or is_date_line(line):
+        return False
+    if any(char.isdigit() for char in line):
+        return False
+
+    words = line.split()
+    if len(words) > 6:
+        return False
+    return "," in line or line.isupper()
+
+
+def extract_conference_name(header_lines: list[str]) -> str:
+    """Extract a conference/event name from PDF header lines.
+
+    Args:
+        header_lines: Leading PDF text lines before the abstract title.
+
+    Returns:
+        str: Conference name, or an empty string when none is found.
+    """
+    for index, line in enumerate(header_lines):
+        if not EVENT_KEYWORD_RE.search(line):
+            continue
+
+        name_lines = [line]
+        for extra_line in header_lines[index + 1:index + 4]:
+            if (
+                is_date_line(extra_line)
+                or (is_probable_place_line(extra_line) and "," in extra_line)
+                or PLACE_LABEL_RE.match(extra_line)
+            ):
+                break
+            name_lines.append(extra_line)
+
+        return title_case_if_all_caps(" ".join(name_lines))
+    return ""
+
+
+def extract_conference_place(header_lines: list[str]) -> str:
+    """Extract a conference place from PDF header lines.
+
+    Args:
+        header_lines: Leading PDF text lines before the abstract title.
+
+    Returns:
+        str: Event place, or an empty string when none is found.
+    """
+    for line in header_lines:
+        match = PLACE_LABEL_RE.match(line)
+        if match:
+            return title_case_if_all_caps(match.group(1))
+
+    for index, line in enumerate(header_lines):
+        if is_date_line(line):
+            match = re.search(r"\b(?:19|20)\d{2}\b\s*,\s*(.+)$", line)
+            if match:
+                place = compact_info_text(match.group(1))
+                if is_probable_place_line(place):
+                    return title_case_if_all_caps(place)
+            for next_line in header_lines[index + 1:index + 3]:
+                if is_probable_place_line(next_line):
+                    return title_case_if_all_caps(next_line)
+    return ""
+
+
+def extract_additional_info(
+    lines: list[TextLine],
+    title_end_index: int,
+    default_additional_info: AdditionalInfo | None = None,
+) -> AdditionalInfo:
+    """Extract conference name and place from PDF header text.
+
+    Args:
+        lines: Text lines extracted from a PDF.
+        title_end_index: Index of the final line used for the title.
+        default_additional_info: Batch-level fallback metadata used for any
+            fields missing from the PDF itself.
+
+    Returns:
+        AdditionalInfo: Dict with `name` and `place` keys. Values are empty
+            strings when no reliable metadata is found.
+    """
+    texts = [line.text for line in lines]
+    section_index = first_section_index(texts)
+    limits = [min(len(texts), 12)]
+    if section_index is not None:
+        limits.append(section_index)
+    if title_end_index > 0:
+        limits.append(title_end_index)
+
+    header_lines: list[str] = []
+    for text in texts[:max(0, min(limits))]:
+        cleaned = compact_info_text(text)
+        if cleaned and not is_contact_line(cleaned):
+            header_lines.append(cleaned)
+
+    defaults = default_additional_info or {}
+    name = extract_conference_name(header_lines)
+    place = extract_conference_place(header_lines)
+    return {
+        "name": name or compact_info_text(defaults.get("name", "")),
+        "place": place or compact_info_text(defaults.get("place", "")),
+    }
+
+
+def default_additional_info_from_values(
+    name: str | None = None,
+    place: str | None = None,
+) -> AdditionalInfo | None:
+    """Build optional batch-level conference metadata from CLI values.
+
+    Args:
+        name: Optional conference name.
+        place: Optional conference place.
+
+    Returns:
+        AdditionalInfo | None: Normalised metadata when at least one value was
+            supplied, otherwise `None`.
+    """
+    additional_info = {
+        "name": compact_info_text(name or ""),
+        "place": compact_info_text(place or ""),
+    }
+    if not additional_info["name"] and not additional_info["place"]:
+        return None
+    return additional_info
+
+
+def infer_batch_additional_info(rows: list[Row]) -> AdditionalInfo | None:
+    """Infer a shared conference from repeated extracted row metadata.
+
+    Args:
+        rows: Metadata rows from one extraction batch.
+
+    Returns:
+        AdditionalInfo | None: Dominant metadata pair when it appears at least
+            twice, otherwise `None`.
+    """
+    pairs: list[tuple[str, str]] = []
+    for row in rows:
+        value = row.get("additional_info")
+        if not isinstance(value, dict):
+            continue
+        name = compact_info_text(value.get("name", ""))
+        place = compact_info_text(value.get("place", ""))
+        if name or place:
+            pairs.append((name, place))
+
+    if not pairs:
+        return None
+
+    (name, place), count = Counter(pairs).most_common(1)[0]
+    if count < 2:
+        return None
+    return {"name": name, "place": place}
+
+
 def standardise_keywords(keywords: str) -> str:
     """Normalise keyword separators to semicolons.
 
@@ -493,15 +766,21 @@ def extract_description(lines: list[str]) -> str:
     return " ".join(description_lines).strip()
 
 
-def process_pdf(path: Path) -> Row:
+def process_pdf(
+    path: Path,
+    default_additional_info: AdditionalInfo | None = None,
+) -> Row:
     """Extract metadata from one PDF abstract.
 
     Args:
         path: Path to the PDF file to process.
+        default_additional_info: Batch-level fallback metadata for PDFs that
+            do not contain conference name/place text.
 
     Returns:
         Row: Dictionary containing `filename`, `abstract_title`,
-            `abstract_authors`, `abstract_description`, and `abstract_keywords`.
+            `abstract_authors`, `abstract_description`, `abstract_keywords`,
+            and `additional_info`.
 
     Raises:
         ValueError: If `path` does not have a PDF suffix.
@@ -518,6 +797,11 @@ def process_pdf(path: Path) -> Row:
         "abstract_authors": extract_authors(text_lines, title_end_index),
         "abstract_description": extract_description(lines),
         "abstract_keywords": extract_keywords(lines),
+        "additional_info": extract_additional_info(
+            text_lines,
+            title_end_index,
+            default_additional_info,
+        ),
     }
 
 
@@ -538,16 +822,43 @@ def pdf_input_files(input_dir: Path) -> list[Path]:
     )
 
 
-def extract_abstract_metadata(input_folder: Path = Path(INPUT_FOLDER)) -> list[Row]:
+def extract_abstract_metadata(
+    input_folder: Path = Path(INPUT_FOLDER),
+    default_additional_info: AdditionalInfo | None = None,
+) -> list[Row]:
     """Extract abstract metadata from every PDF in a folder.
 
     Args:
         input_folder: Directory containing PDF abstracts.
+        default_additional_info: Batch-level fallback metadata for PDFs that
+            do not contain conference name/place text.
 
     Returns:
         list[Row]: Metadata rows sorted by PDF filename.
     """
-    return [process_pdf(path) for path in pdf_input_files(Path(input_folder))]
+    rows = [
+        process_pdf(path, default_additional_info)
+        for path in pdf_input_files(Path(input_folder))
+    ]
+    if default_additional_info_from_values(
+        name=(default_additional_info or {}).get("name"),
+        place=(default_additional_info or {}).get("place"),
+    ):
+        return rows
+
+    inferred_info = infer_batch_additional_info(rows)
+    if inferred_info is None:
+        return rows
+
+    for row in rows:
+        info = row.get("additional_info")
+        if (
+            isinstance(info, dict)
+            and not info.get("name")
+            and not info.get("place")
+        ):
+            row["additional_info"] = dict(inferred_info)
+    return rows
 
 
 def write_csv(rows: list[Row], csv_path: Path) -> None:
@@ -565,7 +876,15 @@ def write_csv(rows: list[Row], csv_path: Path) -> None:
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            writer.writerow({
+                key: (
+                    json.dumps(value, ensure_ascii=False)
+                    if isinstance(value, dict)
+                    else value
+                )
+                for key, value in row.items()
+            })
 
 
 def write_json(rows: list[Row], json_path: Path) -> None:
@@ -589,6 +908,7 @@ def extract_abstract_data(
     input_folder: Path = Path(INPUT_FOLDER),
     csv_path: Path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV,
     json_path: Path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON,
+    default_additional_info: AdditionalInfo | None = None,
 ) -> list[Row]:
     """Extract abstract metadata and write CSV and JSON outputs.
 
@@ -596,11 +916,16 @@ def extract_abstract_data(
         input_folder: Directory containing PDF abstracts.
         csv_path: Destination CSV metadata path.
         json_path: Destination JSON metadata path.
+        default_additional_info: Batch-level fallback metadata for PDFs that
+            do not contain conference name/place text.
 
     Returns:
         list[Row]: Metadata rows extracted from the input PDFs.
     """
-    rows = extract_abstract_metadata(Path(input_folder))
+    rows = extract_abstract_metadata(
+        Path(input_folder),
+        default_additional_info,
+    )
     write_csv(rows, Path(csv_path))
     write_json(rows, Path(json_path))
     return rows
@@ -619,6 +944,10 @@ def main() -> None:
         input_folder=Path(args.input_folder),
         csv_path=csv_path,
         json_path=json_path,
+        default_additional_info=default_additional_info_from_values(
+            name=args.conference_name,
+            place=args.conference_place,
+        ),
     )
 
     print(f"Processed {len(rows)} files.")

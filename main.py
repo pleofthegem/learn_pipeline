@@ -35,6 +35,22 @@ def parse_args() -> argparse.Namespace:
         help="Folder containing combined PDF e-books to split.",
         type=str,
     )
+    parser.add_argument(
+        "--conference-name",
+        default=None,
+        help=(
+            "Default conference name for PDFs that do not contain one."
+        ),
+        type=str,
+    )
+    parser.add_argument(
+        "--conference-place",
+        default=None,
+        help=(
+            "Default conference place for PDFs that do not contain one."
+        ),
+        type=str,
+    )
     return parser.parse_args()
 
 
@@ -61,6 +77,7 @@ def run_pipeline(
         Path(anonymise_abstracts.JSON_OUTPUT_FOLDER)
         / anonymise_abstracts.OUTPUT_JSON
     ),
+    default_additional_info: extract_abstract_data.AdditionalInfo | None = None,
 ) -> dict[str, int]:
     """Run each pipeline stage in order.
 
@@ -75,6 +92,8 @@ def run_pipeline(
         extract_json_path: Destination JSON path for extracted metadata.
         anonymise_csv_path: Destination CSV path for anonymised text output.
         anonymise_json_path: Destination JSON path for anonymised text output.
+        default_additional_info: Batch-level fallback conference metadata for
+            PDFs that do not contain name/place text.
 
     Returns:
         dict[str, int]: Counts from each pipeline stage.
@@ -96,6 +115,7 @@ def run_pipeline(
         input_folder=Path(raw_folder),
         csv_path=Path(extract_csv_path),
         json_path=Path(extract_json_path),
+        default_additional_info=default_additional_info,
     )
     print('Anonymising pdfs...')
     anonymised_rows = anonymise_abstracts.anonymise_pdf_abstracts(
@@ -123,6 +143,12 @@ def main() -> None:
     counts = run_pipeline(
         input_folder=Path(args.input_folder),
         combined_input_folder=Path(args.combined_input_folder),
+        default_additional_info=(
+            extract_abstract_data.default_additional_info_from_values(
+                name=args.conference_name,
+                place=args.conference_place,
+            )
+        ),
     )
 
     print(f"Converted {counts['converted_pdfs']} PDFs.")
@@ -133,3 +159,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+#TODO: handle case where pdf book is not in the format required. 
+#TODO: extracting edge case: where pdf 
