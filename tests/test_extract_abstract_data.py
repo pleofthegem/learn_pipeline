@@ -71,7 +71,7 @@ def test_process_pdf_extracts_dasgupta_like_metadata(
 def test_process_pdf_fills_missing_additional_info_from_default(
     dasgupta_like_pdf: Path,
 ) -> None:
-    """Check that batch defaults fill fields missing from the PDF header."""
+    """Check that explicit defaults fill fields missing from the PDF header."""
     row = process_pdf(
         dasgupta_like_pdf,
         default_additional_info={
@@ -113,7 +113,7 @@ def test_process_pdf_uses_empty_additional_info_without_default(
 def test_process_pdf_uses_default_additional_info_for_standalone_pdf(
     tmp_path: Path,
 ) -> None:
-    """Check that normal PDFs without event headers use batch defaults."""
+    """Check that normal PDFs without event headers use explicit defaults."""
     path = tmp_path / "Meng - Rural Sewage Treatment in China.pdf"
     default_additional_info = {
         "name": "IWA Example Conference",
@@ -260,88 +260,6 @@ def test_extract_abstract_metadata_filters_to_pdfs(
     rows = extract_abstract_metadata(input_dir)
 
     assert [row["filename"] for row in rows] == [dasgupta_like_pdf.name]
-
-
-def test_extract_abstract_metadata_infers_batch_info_for_empty_rows(
-    tmp_path: Path,
-) -> None:
-    """Check that repeated event headers fill standalone PDFs in the batch."""
-    input_dir = tmp_path / "abstracts_raw"
-    input_dir.mkdir()
-    header = [
-        "IWA 21st INTERNATIONAL CONFERENCE ON",
-        "DIFFUSE POLLUTION & EUTROPHICATION",
-        "DECEMBER 11-14, 2024,",
-        "CHIANG MAI, THAILAND",
-    ]
-    write_sample_pdf(
-        input_dir / "ebook_1.pdf",
-        [*header, "Analysis of Ecological Base Flow", "A Author", "Abstract: A."],
-    )
-    write_sample_pdf(
-        input_dir / "ebook_2.pdf",
-        [*header, "Diffuse Pollution Study", "B Author", "Abstract: B."],
-    )
-    write_sample_pdf(
-        input_dir / "Meng - Rural Sewage Treatment in China.pdf",
-        [
-            "Rural Sewage Treatment in China",
-            "Wenjing Meng*, Xiao Hu*",
-            "Abstract: Rural sewage treatment is a critical issue.",
-        ],
-    )
-
-    rows = extract_abstract_metadata(input_dir)
-
-    row_by_filename = {row["filename"]: row for row in rows}
-    assert row_by_filename[
-        "Meng - Rural Sewage Treatment in China.pdf"
-    ]["additional_info"] == {
-        "name": (
-            "IWA 21st International Conference on "
-            "Diffuse Pollution & Eutrophication"
-        ),
-        "place": "Chiang Mai, Thailand",
-    }
-
-
-def test_extract_abstract_metadata_does_not_infer_place_for_other_event(
-    tmp_path: Path,
-    dasgupta_like_pdf: Path,
-) -> None:
-    """Check that partial metadata from another event is not mixed."""
-    input_dir = tmp_path / "abstracts_raw"
-    input_dir.mkdir()
-    header = [
-        "IWA 21st INTERNATIONAL CONFERENCE ON",
-        "DIFFUSE POLLUTION & EUTROPHICATION",
-        "DECEMBER 11-14, 2024,",
-        "CHIANG MAI, THAILAND",
-    ]
-    write_sample_pdf(
-        input_dir / "ebook_1.pdf",
-        [*header, "Analysis of Ecological Base Flow", "A Author", "Abstract: A."],
-    )
-    write_sample_pdf(
-        input_dir / "ebook_2.pdf",
-        [*header, "Diffuse Pollution Study", "B Author", "Abstract: B."],
-    )
-    (input_dir / dasgupta_like_pdf.name).write_bytes(
-        dasgupta_like_pdf.read_bytes()
-    )
-
-    rows = extract_abstract_metadata(input_dir)
-
-    dasgupta_row = next(
-        row for row in rows if row["filename"] == dasgupta_like_pdf.name
-    )
-    assert dasgupta_row["additional_info"] == {
-        "name": (
-            "13th IWA International conference "
-            "(Theme-Water Reuse in developing countries)"
-        ),
-        "place": "",
-    }
 
 
 def test_write_csv_and_json_outputs_metadata(

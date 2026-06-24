@@ -1,7 +1,6 @@
 """Extract high-level abstract metadata from PDF files."""
 
 import argparse
-from collections import Counter
 import csv
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -642,35 +641,6 @@ def default_additional_info_from_values(
     return additional_info
 
 
-def infer_batch_additional_info(rows: list[Row]) -> AdditionalInfo | None:
-    """Infer a shared conference from repeated extracted row metadata.
-
-    Args:
-        rows: Metadata rows from one extraction batch.
-
-    Returns:
-        AdditionalInfo | None: Dominant metadata pair when it appears at least
-            twice, otherwise `None`.
-    """
-    pairs: list[tuple[str, str]] = []
-    for row in rows:
-        value = row.get("additional_info")
-        if not isinstance(value, dict):
-            continue
-        name = compact_info_text(value.get("name", ""))
-        place = compact_info_text(value.get("place", ""))
-        if name or place:
-            pairs.append((name, place))
-
-    if not pairs:
-        return None
-
-    (name, place), count = Counter(pairs).most_common(1)[0]
-    if count < 2:
-        return None
-    return {"name": name, "place": place}
-
-
 def standardise_keywords(keywords: str) -> str:
     """Normalise keyword separators to semicolons.
 
@@ -836,29 +806,10 @@ def extract_abstract_metadata(
     Returns:
         list[Row]: Metadata rows sorted by PDF filename.
     """
-    rows = [
+    return [
         process_pdf(path, default_additional_info)
         for path in pdf_input_files(Path(input_folder))
     ]
-    if default_additional_info_from_values(
-        name=(default_additional_info or {}).get("name"),
-        place=(default_additional_info or {}).get("place"),
-    ):
-        return rows
-
-    inferred_info = infer_batch_additional_info(rows)
-    if inferred_info is None:
-        return rows
-
-    for row in rows:
-        info = row.get("additional_info")
-        if (
-            isinstance(info, dict)
-            and not info.get("name")
-            and not info.get("place")
-        ):
-            row["additional_info"] = dict(inferred_info)
-    return rows
 
 
 def write_csv(rows: list[Row], csv_path: Path) -> None:

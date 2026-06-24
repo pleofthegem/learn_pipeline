@@ -37,15 +37,12 @@ Each row includes `additional_info` with this shape:
 {"name": "", "place": ""}
 ```
 
-The extractor first tries to read the conference name and place from the PDF
-header. If several PDFs in the same extraction batch contain the same
-conference metadata, that repeated value is used for PDFs where
-`additional_info` is fully empty. Rows that already contain a different
-conference name are left alone, so the extractor does not mix a place from one
-event with the name of another event.
+The extractor tries to read the conference name and place from each PDF's own
+header. If the PDF does not contain conference metadata, `additional_info`
+stays blank unless explicit defaults are supplied.
 
-If the conference metadata is known in advance, optional batch defaults can
-also fill missing values:
+If the conference metadata is known in advance, optional defaults can fill
+missing values:
 
 ```bash
 ./.venv/bin/python extract_abstract_data.py abstracts_raw \
