@@ -18,9 +18,27 @@ sudo apt install libreoffice
 
 Activate your Python environment before running the pipeline commands.
 
+Linux or macOS:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Windows Command Prompt:
+
+```bat
+python -m venv .venv
+.venv\Scripts\activate.bat
 pip install -r requirements.txt
 ```
 
