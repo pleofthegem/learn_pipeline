@@ -9,6 +9,7 @@ from split_pdf import (
     METADATA_CSV,
     METADATA_JSON,
     find_toc_page_range,
+    is_combined_pdf,
     parse_toc,
     parse_args,
     split_combined_pdfs,
@@ -58,7 +59,7 @@ def add_page(pdf: fitz.Document, text: str) -> None:
     page.insert_text((72, 72), text, fontsize=12)
 
 
-def test_parse_args_defaults_to_combined_input(
+def test_parse_args_defaults_to_raw_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Check that the split CLI can run without an explicit input folder."""
@@ -111,6 +112,25 @@ def test_find_toc_page_range_detects_content_pages(tmp_path: Path) -> None:
         assert find_toc_page_range(pdf) == (2, 2)
 
 
+def test_is_combined_pdf_accepts_expected_combined_format(tmp_path: Path) -> None:
+    """Check that the naive guard recognises the supported combined format."""
+    source = tmp_path / "combined.pdf"
+    write_combined_pdf(source)
+
+    assert is_combined_pdf(source)
+
+
+def test_is_combined_pdf_rejects_ordinary_pdf(tmp_path: Path) -> None:
+    """Check that an ordinary single PDF is not treated as combined."""
+    source = tmp_path / "ordinary.pdf"
+    pdf = fitz.open()
+    add_page(pdf, "This PDF has no table of contents.")
+    pdf.save(source)
+    pdf.close()
+
+    assert not is_combined_pdf(source)
+
+
 def test_parse_toc_detects_later_content_pages(tmp_path: Path) -> None:
     """Check that TOC parsing is not tied to fixed page numbers."""
     source = tmp_path / "combined.pdf"
@@ -153,6 +173,27 @@ def test_split_folder_writes_one_pdf_per_toc_entry(tmp_path: Path) -> None:
     with fitz.open(output_folder / "ebook_T1_O2.pdf") as second:
         assert second.page_count == 2
         assert "Second Abstract" in second[0].get_text()
+
+
+def test_split_folder_supports_same_input_and_output_folder(tmp_path: Path) -> None:
+    """Check that new split PDFs are not processed again during the same run."""
+    raw_folder = tmp_path / "raw"
+    staging_folder = tmp_path / "split_staging"
+    raw_folder.mkdir()
+    write_combined_pdf(raw_folder / "ebook.pdf")
+
+    metadata = split_folder(
+        input_folder=raw_folder,
+        output_folder=raw_folder,
+        staging_folder=staging_folder,
+    )
+
+    assert [row["abstract_id"] for row in metadata] == ["T1_O1", "T1_O2"]
+    assert (raw_folder / "ebook.pdf").exists()
+    assert (raw_folder / "ebook_T1_O1.pdf").exists()
+    assert (raw_folder / "ebook_T1_O2.pdf").exists()
+    assert (staging_folder / "ebook_T1_O1.pdf").exists()
+    assert (staging_folder / "ebook_T1_O2.pdf").exists()
 
 
 def test_split_folder_cleans_staging_folder_before_splitting(tmp_path: Path) -> None:

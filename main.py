@@ -9,15 +9,13 @@ import extract_abstract_data
 import split_pdf
 
 INPUT_FOLDER = "input"
-COMBINED_INPUT_FOLDER = "combined_input"
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line options for the full pipeline.
 
     Returns:
-        argparse.Namespace: Parsed CLI arguments containing `input_folder` and
-            `combined_input_folder`.
+        argparse.Namespace: Parsed CLI arguments containing `input_folder`.
     """
     parser = argparse.ArgumentParser(
         description="Run conversion, splitting, metadata extraction, and anonymisation."
@@ -27,12 +25,6 @@ def parse_args() -> argparse.Namespace:
         nargs="?",
         default=INPUT_FOLDER,
         help="Folder containing raw source files to aggregate and convert.",
-        type=str,
-    )
-    parser.add_argument(
-        "--combined-input-folder",
-        default=COMBINED_INPUT_FOLDER,
-        help="Folder containing combined PDF e-books to split.",
         type=str,
     )
     parser.add_argument(
@@ -56,7 +48,6 @@ def parse_args() -> argparse.Namespace:
 
 def run_pipeline(
     input_folder: Path = Path(INPUT_FOLDER),
-    combined_input_folder: Path = Path(COMBINED_INPUT_FOLDER),
     aggregate_folder: Path = Path(convert_to_pdf.AGGREGATED_FOLDER),
     raw_folder: Path = Path(convert_to_pdf.PDF_OUTPUT_FOLDER),
     split_folder: Path = Path(split_pdf.SPLIT_FOLDER),
@@ -83,7 +74,6 @@ def run_pipeline(
 
     Args:
         input_folder: Folder containing raw files to aggregate and convert.
-        combined_input_folder: Folder containing combined PDFs to split.
         aggregate_folder: Intermediary folder for converted source files.
         raw_folder: Shared folder containing atomic PDF abstracts.
         split_folder: Intermediary folder for split combined PDFs.
@@ -106,7 +96,7 @@ def run_pipeline(
     )
     print('Splitting combined pdfs...')
     split_metadata = split_pdf.split_combined_pdfs(
-        input_folder=Path(combined_input_folder),
+        input_folder=Path(raw_folder),
         output_folder=Path(raw_folder),
         staging_folder=Path(split_folder),
     )
@@ -142,7 +132,6 @@ def main() -> None:
     args = parse_args()
     counts = run_pipeline(
         input_folder=Path(args.input_folder),
-        combined_input_folder=Path(args.combined_input_folder),
         default_additional_info=(
             extract_abstract_data.default_additional_info_from_values(
                 name=args.conference_name,
@@ -159,6 +148,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-#TODO: handle case where pdf book is not in the format required. 
-#TODO: extracting edge case: where pdf 

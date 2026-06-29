@@ -9,8 +9,8 @@ from pathlib import Path
 
 import fitz
 
-# Default input folder for combined abstract e-books.
-INPUT_FOLDER = "combined_input"
+# Default folder containing PDFs to check for combined abstract e-books.
+INPUT_FOLDER = "abstracts_raw"
 # Staging folder for human inspection.
 SPLIT_FOLDER = "abstracts_split"
 # Shared general input folder for other scripts like anonymise_abstracts.py and extract_abstract_metadata.py
@@ -38,7 +38,8 @@ def parse_args() -> argparse.Namespace:
 
     Returns:
         argparse.Namespace: Parsed arguments containing `input_folder`, the
-            folder of combined PDFs to split. Defaults to `INPUT_FOLDER` when
+            folder of PDFs to check for combined files. Defaults to
+            `INPUT_FOLDER` when
             omitted.
     """
     parser = argparse.ArgumentParser(
@@ -49,7 +50,7 @@ def parse_args() -> argparse.Namespace:
         nargs="?",
         default=INPUT_FOLDER,
         type=str,
-        help="Folder of combined PDFs.",
+        help="Folder of PDFs to check for combined abstract e-books.",
     )
     return parser.parse_args()
 
@@ -64,7 +65,7 @@ def split_combined_pdfs(
     """Run the split step using derived pipeline defaults.
 
     Args:
-        input_folder: Folder containing combined PDF files.
+        input_folder: Folder containing PDFs to check for combined files.
         output_folder: Final folder that receives split PDFs.
         staging_folder: Intermediary folder where PDFs are split before being
             copied to the final output folder, and where metadata is written for
@@ -94,7 +95,7 @@ def split_folder(
     """Split every combined PDF in a folder.
 
     Args:
-        input_folder: Folder containing combined PDF files.
+        input_folder: Folder containing PDFs to check for combined files.
         output_folder: Final folder that receives the split PDF files.
         staging_folder: Intermediary folder where PDFs are split before they are
             copied to the final output folder.
@@ -121,6 +122,7 @@ def split_folder(
     clean_folder(staging_folder)
     metadata: list[dict[str, object]] = []
 
+    # Snapshot paths before writing split PDFs back into the output folder.
     pdf_paths = [
         path
         for path in sorted(Path(input_folder).iterdir())
@@ -155,16 +157,11 @@ def split_pdf(
             is returned when the PDF does not contain the expected TOC.
     """
     with fitz.open(pdf_path) as pdf:
-        toc_page_range = find_toc_page_range(pdf)
-        if toc_page_range is None:
+        combined_info = combined_pdf_info(pdf)
+        if combined_info is None:
             return []
 
-        _, toc_end_page = toc_page_range
-        entries = parse_toc(pdf, toc_page_range)
-        if not entries:
-            return []
-
-        page_offset = derive_page_offset(pdf, entries, toc_end_page)
+        toc_end_page, entries, page_offset = combined_info
         for entry in entries:
             entry["pdf_start_page"] = find_title_page(
                 pdf=pdf,
@@ -199,6 +196,41 @@ def split_pdf(
             )
 
     return metadata
+
+
+def is_combined_pdf(pdf_path: Path) -> bool:
+    """Check whether a PDF matches the expected combined abstract format.
+
+    Args:
+        pdf_path: PDF path to inspect.
+
+    Returns:
+        bool: True when the PDF has a parseable combined-abstract TOC and the
+            first listed abstract can be found later in the document.
+    """
+    with fitz.open(pdf_path) as pdf:
+        return combined_pdf_info(pdf) is not None
+
+
+def combined_pdf_info(
+    pdf: fitz.Document,
+) -> tuple[int, list[dict[str, object]], int] | None:
+    """Return parsed combined-PDF info, or None when the format is not matched."""
+    toc_page_range = find_toc_page_range(pdf)
+    if toc_page_range is None:
+        return None
+
+    _, toc_end_page = toc_page_range
+    entries = parse_toc(pdf, toc_page_range)
+    if len(entries) < 2:
+        return None
+
+    try:
+        page_offset = derive_page_offset(pdf, entries, toc_end_page)
+    except ValueError:
+        return None
+
+    return toc_end_page, entries, page_offset
 
 
 def parse_toc(

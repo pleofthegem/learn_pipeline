@@ -6,7 +6,7 @@ metadata, and anonymised text exports.
 ## Requirements
 
 - Python 3.10 or later
-- LibreOffice, for converting `.doc`, `.docx`, `.ppt`, and `.pptx` files to PDF
+- LibreOffice, for converting `.doc` and `.docx` files to PDF
 
 On Debian or Ubuntu, install LibreOffice with:
 
@@ -67,8 +67,7 @@ python main.py \
 Default inputs:
 
 - `input/` for source files to aggregate and convert
-- `combined_input/` for combined abstract e-books to split
-- `abstracts_raw/` for atomic PDF abstracts
+- `abstracts_raw/` for PDFs produced by conversion and checked for splitting
 
 Main outputs:
 
@@ -93,8 +92,10 @@ Supported input types:
 - `.pdf`
 - `.doc`
 - `.docx`
-- `.ppt`
-- `.pptx`
+
+Presentations are not part of the automated abstract pipeline. `.ppt` and
+`.pptx` files are ignored, and PDFs with path or filename text such as `ppt`,
+`pptx`, or `presentation` are skipped before they reach `abstracts_raw/`.
 
 Outputs:
 
@@ -103,16 +104,17 @@ Outputs:
 
 ### Split Combined PDFs: `split_pdf.py`
 
-Splits combined abstract e-book PDFs into individual PDFs.
+Checks PDFs in `abstracts_raw/` and splits only the ones that match the
+expected combined abstract e-book format.
 
 ```bash
 python split_pdf.py
 ```
 
-To use a custom combined-PDF input folder:
+To check a custom PDF folder:
 
 ```bash
-python split_pdf.py custom_combined_input
+python split_pdf.py custom_pdf_folder
 ```
 
 Outputs:
@@ -188,7 +190,7 @@ The full pipeline:
 
 1. Aggregates supported source files from `input/`.
 2. Converts Office files to PDF and copies existing PDFs into `abstracts_raw/`.
-3. Splits combined abstract e-books from `combined_input/`.
+3. Checks `abstracts_raw/` for combined abstract e-books and splits matches.
 4. Extracts title, authors, description, keywords, and conference metadata.
 5. Anonymises PDF text from `abstracts_raw/`.
 
@@ -198,10 +200,9 @@ Input folders:
 
 - `input/`: raw source files for conversion. This is mainly for files supplied
   before PDF-only input is enforced.
-- `combined_input/`: combined PDF e-books with a table of contents followed by
-  multiple abstracts.
-- `abstracts_raw/`: atomic PDF abstracts used by metadata extraction and
-  anonymisation.
+- `abstracts_raw/`: PDFs produced by conversion. This can contain normal PDFs
+  and combined e-book PDFs; the splitter ignores PDFs that do not match the
+  expected combined format.
 
 Output folders:
 

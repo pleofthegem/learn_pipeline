@@ -10,7 +10,6 @@ def test_run_pipeline_calls_each_module_api_in_order(
     """Check that the top-level pipeline delegates to module APIs in order."""
     calls: list[str] = []
     input_folder = tmp_path / "input"
-    combined_folder = tmp_path / "combined_input"
     aggregate_folder = tmp_path / "abstracts_aggregated"
     raw_folder = tmp_path / "abstracts_raw"
     split_folder = tmp_path / "abstracts_split"
@@ -37,7 +36,7 @@ def test_run_pipeline_calls_each_module_api_in_order(
         staging_folder: Path,
     ) -> list[dict[str, object]]:
         calls.append("split")
-        assert input_folder == combined_folder
+        assert input_folder == raw_folder
         assert output_folder == raw_folder
         assert staging_folder == split_folder
         return [{"output_file": "split.pdf"}]
@@ -94,7 +93,6 @@ def test_run_pipeline_calls_each_module_api_in_order(
 
     counts = pipeline.run_pipeline(
         input_folder=input_folder,
-        combined_input_folder=combined_folder,
         aggregate_folder=aggregate_folder,
         raw_folder=raw_folder,
         split_folder=split_folder,
