@@ -13,3 +13,7 @@ __pycache__/
 *.pptx
 .agents
 .pytest_cache
+*.zip
+*.xlsx
+!abstract_001.pdf
+!abstract_002.pdf

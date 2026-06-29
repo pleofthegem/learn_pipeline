@@ -41,12 +41,34 @@ def test_aggregate_files_skips_unsupported_file_types(tmp_path: Path) -> None:
     aggregate_dir = tmp_path / AGGREGATED_FOLDER
     input_folder.mkdir()
     (input_folder / "paper.pdf").write_text("pdf", encoding="utf-8")
+    (input_folder / "talk_PPT.pdf").write_text("ppt pdf", encoding="utf-8")
+    (input_folder / "presentation.pdf").write_text("slides pdf", encoding="utf-8")
+    (input_folder / "slides.pptx").write_text("pptx", encoding="utf-8")
     (input_folder / "notes.txt").write_text("txt", encoding="utf-8")
 
     copied = aggregate_files(input_folder, aggregate_dir)
 
     assert copied == [aggregate_dir / "paper.pdf"]
+    assert not (aggregate_dir / "talk_PPT.pdf").exists()
+    assert not (aggregate_dir / "presentation.pdf").exists()
+    assert not (aggregate_dir / "slides.pptx").exists()
     assert not (aggregate_dir / "notes.txt").exists()
+
+
+def test_aggregate_files_skips_pdf_inside_presentation_folder(
+    tmp_path: Path,
+) -> None:
+    """Check that PDF presentations are skipped when the folder names reveal it."""
+    input_folder = tmp_path / "input"
+    presentation_dir = input_folder / "PRESENTATIONS"
+    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    presentation_dir.mkdir(parents=True)
+    (presentation_dir / "talk.pdf").write_text("slides pdf", encoding="utf-8")
+
+    copied = aggregate_files(input_folder, aggregate_dir)
+
+    assert copied == []
+    assert not (aggregate_dir / "PRESENTATIONS__talk.pdf").exists()
 
 
 def test_aggregate_files_creates_missing_input_and_aggregate_folders(
@@ -128,6 +150,24 @@ def test_convert_file_to_pdf_rejects_unsupported_suffix(tmp_path: Path) -> None:
     source.write_text("notes", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Unsupported file type"):
+        convert_file_to_pdf(source, tmp_path / "pdfs")
+
+
+def test_convert_file_to_pdf_rejects_presentation_suffix(tmp_path: Path) -> None:
+    """Check that presentations are not part of the abstract pipeline."""
+    source = tmp_path / "slides.pptx"
+    source.write_text("slides", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        convert_file_to_pdf(source, tmp_path / "pdfs")
+
+
+def test_convert_file_to_pdf_rejects_powerpoint_pdf(tmp_path: Path) -> None:
+    """Check that presentation-looking PDFs are not copied to abstracts_raw."""
+    source = tmp_path / "slides_PPT.pdf"
+    source.write_text("slides", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unsupported PowerPoint PDF"):
         convert_file_to_pdf(source, tmp_path / "pdfs")
 
 

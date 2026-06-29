@@ -7,8 +7,9 @@ from pathlib import Path
 
 AGGREGATED_FOLDER: str = "abstracts_aggregated"
 PDF_OUTPUT_FOLDER: str = "abstracts_raw"
-OFFICE_SUFFIXES: set[str] = {".doc", ".docx", ".ppt", ".pptx"}
+OFFICE_SUFFIXES: set[str] = {".doc", ".docx"}
 SUPPORTED_SUFFIXES: set[str] = {'.pdf', *OFFICE_SUFFIXES}
+POWERPOINT_PDF_MARKERS: tuple[str, ...] = ("pptx", "ppt", "presentation")
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,6 +60,8 @@ Fails if the output folder is the same as the input folder
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
             # If unsupported then don't consider it.
             continue
+        if is_powerpoint_pdf(path):
+            continue
 
         relative_path = path.relative_to(input_folder)
         destination = aggregate_destination(aggregate_dir, relative_path)
@@ -104,6 +107,15 @@ def convert_file_to_pdf(path: Path, output_dir: Path) -> Path:
             raise ValueError(f"Unsupported file type: {path.suffix}")
 
 
+def is_powerpoint_pdf(path: Path) -> bool:
+    """Check whether a PDF path looks like it came from a presentation."""
+    if path.suffix.lower() != ".pdf":
+        return False
+
+    searchable_path = " ".join(path.parts).casefold()
+    return any(marker in searchable_path for marker in POWERPOINT_PDF_MARKERS)
+
+
 def copy_pdf(path: Path, output_dir: Path) -> Path:
     """Copy an existing PDF into the PDF output folder.
 
@@ -114,6 +126,9 @@ def copy_pdf(path: Path, output_dir: Path) -> Path:
     Returns:
         Path: Destination PDF path.
     """
+    if is_powerpoint_pdf(path):
+        raise ValueError(f"Unsupported PowerPoint PDF: {path.name}")
+
     output_dir.mkdir(parents=True, exist_ok=True)
     destination = output_dir / path.name
     if path.resolve() == destination.resolve():
@@ -124,10 +139,10 @@ def copy_pdf(path: Path, output_dir: Path) -> Path:
 
 
 def convert_office_to_pdf(path: Path, output_dir: Path) -> Path:
-    """Convert an Office document or presentation to PDF with LibreOffice.
+    """Convert an Office document to PDF with LibreOffice.
 
     Args:
-        path: Source `.doc`, `.docx`, `.ppt`, or `.pptx` file.
+        path: Source `.doc` or `.docx` file.
         output_dir: Folder where the generated PDF is written.
 
     Returns:
