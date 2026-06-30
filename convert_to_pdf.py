@@ -1,6 +1,7 @@
 """Aggregate source files and convert supported inputs to PDF."""
 
 import argparse
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -10,6 +11,21 @@ PDF_OUTPUT_FOLDER: str = "abstracts_raw"
 OFFICE_SUFFIXES: set[str] = {".doc", ".docx"}
 SUPPORTED_SUFFIXES: set[str] = {'.pdf', *OFFICE_SUFFIXES}
 POWERPOINT_PDF_MARKERS: tuple[str, ...] = ("pptx", "ppt", "presentation")
+
+
+def alter_file_name(file_name: str) -> str:
+    """Add or increment a Windows-style duplicate suffix in a file name."""
+    path = Path(file_name)
+    # Has this file already been altered?
+    match = re.match(r"^(?P<stem>.*)\((?P<count>\d+)\)$", path.stem)
+    if match:
+        stem = match.group("stem")
+        count = int(match.group("count")) + 1
+    else:
+        stem = path.stem
+        count = 1
+
+    return f"{stem}({count}){path.suffix}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,6 +68,7 @@ Fails if the output folder is the same as the input folder
     aggregate_dir_resolved = aggregate_dir.resolve()
 
     copied: list[Path] = []
+    destinations: dict[Path, Path] = {}
     for path in sorted(input_folder.rglob("*")):
         if not path.is_file():
             continue
@@ -65,6 +82,11 @@ Fails if the output folder is the same as the input folder
 
         relative_path = path.relative_to(input_folder)
         destination = aggregate_destination(aggregate_dir, relative_path)
+        while destination in destinations or destination.exists():
+            destination = destination.with_name(
+                alter_file_name(destination.name))
+
+        destinations[destination] = relative_path
         shutil.copy2(path, destination)
         copied.append(destination)
 
@@ -72,17 +94,20 @@ Fails if the output folder is the same as the input folder
 
 
 def aggregate_destination(aggregate_dir: Path, relative_path: Path) -> Path:
-    """Build a flattened aggregate destination path.
+    """Build an aggregate path from the top-level folder and file name.
 
     Args:
         aggregate_dir: Folder that receives aggregated files.
         relative_path: Source path relative to the original input root.
 
     Returns:
-        Path: Destination path using `__` to preserve parent-folder context in a
-            flat aggregate directory.
+        Path: Destination path using the top-level source folder plus the file
+            name for nested files. Files directly under the input root keep
+            their original name.
     """
-    return aggregate_dir / "__".join(relative_path.parts)
+    if len(relative_path.parts) == 1:
+        return aggregate_dir / relative_path.name
+    return aggregate_dir / f"{relative_path.parts[0]}__{relative_path.name}"
 
 
 def convert_file_to_pdf(path: Path, output_dir: Path) -> Path:

@@ -7,6 +7,7 @@ from convert_to_pdf import (
     AGGREGATED_FOLDER,
     PDF_OUTPUT_FOLDER,
     aggregate_files,
+    alter_file_name,
     convert_all_to_pdf,
     convert_file_to_pdf,
     convert_inputs_to_pdfs,
@@ -14,7 +15,7 @@ from convert_to_pdf import (
 
 
 def test_aggregate_files_flattens_nested_input_tree(tmp_path: Path) -> None:
-    """Check that nested input files are copied into one aggregate folder."""
+    """Check that nested files keep only top-level folder context."""
     input_folder = tmp_path / "input"
     nested_folder = input_folder / "nested" / "deeper"
     aggregate_dir = tmp_path / AGGREGATED_FOLDER
@@ -26,13 +27,44 @@ def test_aggregate_files_flattens_nested_input_tree(tmp_path: Path) -> None:
     copied = aggregate_files(input_folder, aggregate_dir)
 
     assert [path.name for path in copied] == [
-        "nested__deeper__paper.docx",
+        "nested__paper.docx",
         "root.pdf",
     ]
     assert (aggregate_dir / "root.pdf").read_text(encoding="utf-8") == "root"
-    assert (aggregate_dir / "nested__deeper__paper.docx").read_text(
+    assert (aggregate_dir / "nested__paper.docx").read_text(
         encoding="utf-8"
     ) == "nested"
+
+
+def test_alter_file_name_adds_or_increments_duplicate_suffix() -> None:
+    """Check that duplicate names use Windows-style suffixes."""
+    assert alter_file_name("paper.pdf") == "paper(1).pdf"
+    assert alter_file_name("paper(1).pdf") == "paper(2).pdf"
+
+
+def test_aggregate_files_renames_short_name_collisions(tmp_path: Path) -> None:
+    """Check that shortened aggregate names do not overwrite files."""
+    input_folder = tmp_path / "input"
+    first_folder = input_folder / "nested" / "first"
+    second_folder = input_folder / "nested" / "second"
+    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    first_folder.mkdir(parents=True)
+    second_folder.mkdir(parents=True)
+    (first_folder / "paper.pdf").write_text("first", encoding="utf-8")
+    (second_folder / "paper.pdf").write_text("second", encoding="utf-8")
+
+    copied = aggregate_files(input_folder, aggregate_dir)
+
+    assert [path.name for path in copied] == [
+        "nested__paper.pdf",
+        "nested__paper(1).pdf",
+    ]
+    assert (aggregate_dir / "nested__paper.pdf").read_text(
+        encoding="utf-8"
+    ) == "first"
+    assert (aggregate_dir / "nested__paper(1).pdf").read_text(
+        encoding="utf-8"
+    ) == "second"
 
 
 def test_aggregate_files_skips_unsupported_file_types(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ __pycache__/
 !requirements.txt
 *.json
 *.pdf
+*.PDF
 *.docx
 *.csv
 *.doc
@@ -15,5 +16,8 @@ __pycache__/
 .pytest_cache
 *.zip
 *.xlsx
+*.mp4
+*.jpg
+*.rar
 !abstract_001.pdf
 !abstract_002.pdf
