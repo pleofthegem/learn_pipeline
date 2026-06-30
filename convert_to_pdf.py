@@ -6,6 +6,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import fitz
+
 AGGREGATED_FOLDER: str = "abstracts_aggregated"
 PDF_OUTPUT_FOLDER: str = "abstracts_raw"
 OFFICE_SUFFIXES: set[str] = {".doc", ".docx"}
@@ -79,6 +81,8 @@ Fails if the output folder is the same as the input folder
             continue
         if is_powerpoint_pdf(path):
             continue
+        if is_password_protected_pdf(path):
+            continue
 
         relative_path = path.relative_to(input_folder)
         destination = aggregate_destination(aggregate_dir, relative_path)
@@ -141,6 +145,18 @@ def is_powerpoint_pdf(path: Path) -> bool:
     return any(marker in searchable_path for marker in POWERPOINT_PDF_MARKERS)
 
 
+def is_password_protected_pdf(path: Path) -> bool:
+    """Check whether a PDF requires a password before text can be read."""
+    if path.suffix.lower() != ".pdf":
+        return False
+
+    try:
+        with fitz.open(path) as pdf:
+            return bool(pdf.needs_pass)
+    except (fitz.FileDataError, RuntimeError):
+        return False
+
+
 def copy_pdf(path: Path, output_dir: Path) -> Path:
     """Copy an existing PDF into the PDF output folder.
 
@@ -151,8 +167,11 @@ def copy_pdf(path: Path, output_dir: Path) -> Path:
     Returns:
         Path: Destination PDF path.
     """
+    # Catches any powerpoint or password protected pdfs, which allows us to remove them from input.
     if is_powerpoint_pdf(path):
         raise ValueError(f"Unsupported PowerPoint PDF: {path.name}")
+    if is_password_protected_pdf(path):
+        raise ValueError(f"Unsupported password-protected PDF: {path.name}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     destination = output_dir / path.name

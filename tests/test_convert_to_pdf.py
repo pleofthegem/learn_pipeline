@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import fitz
 import pytest
 
 import convert_to_pdf
@@ -12,6 +13,20 @@ from convert_to_pdf import (
     convert_file_to_pdf,
     convert_inputs_to_pdfs,
 )
+
+
+def write_encrypted_pdf(path: Path) -> None:
+    """Create a small password-protected PDF for conversion tests."""
+    pdf = fitz.open()
+    page = pdf.new_page()
+    page.insert_text((72, 72), "Locked PDF")
+    pdf.save(
+        path,
+        encryption=fitz.PDF_ENCRYPT_AES_256,
+        owner_pw="owner",
+        user_pw="user",
+    )
+    pdf.close()
 
 
 def test_aggregate_files_flattens_nested_input_tree(tmp_path: Path) -> None:
@@ -101,6 +116,19 @@ def test_aggregate_files_skips_pdf_inside_presentation_folder(
 
     assert copied == []
     assert not (aggregate_dir / "PRESENTATIONS__talk.pdf").exists()
+
+
+def test_aggregate_files_skips_password_protected_pdf(tmp_path: Path) -> None:
+    """Check that locked PDFs are not copied into the aggregate folder."""
+    input_folder = tmp_path / "input"
+    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    input_folder.mkdir()
+    write_encrypted_pdf(input_folder / "locked.pdf")
+
+    copied = aggregate_files(input_folder, aggregate_dir)
+
+    assert copied == []
+    assert not (aggregate_dir / "locked.pdf").exists()
 
 
 def test_aggregate_files_creates_missing_input_and_aggregate_folders(
@@ -200,6 +228,15 @@ def test_convert_file_to_pdf_rejects_powerpoint_pdf(tmp_path: Path) -> None:
     source.write_text("slides", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Unsupported PowerPoint PDF"):
+        convert_file_to_pdf(source, tmp_path / "pdfs")
+
+
+def test_convert_file_to_pdf_rejects_password_protected_pdf(tmp_path: Path) -> None:
+    """Check that locked PDFs are not copied to abstracts_raw."""
+    source = tmp_path / "locked.pdf"
+    write_encrypted_pdf(source)
+
+    with pytest.raises(ValueError, match="Unsupported password-protected PDF"):
         convert_file_to_pdf(source, tmp_path / "pdfs")
 
 

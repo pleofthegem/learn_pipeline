@@ -96,6 +96,7 @@ Supported input types:
 Presentations are not part of the automated abstract pipeline. `.ppt` and
 `.pptx` files are ignored, and PDFs with path or filename text such as `ppt`,
 `pptx`, or `presentation` are skipped before they reach `abstracts_raw/`.
+Password-protected PDFs are also skipped.
 
 Outputs:
 
