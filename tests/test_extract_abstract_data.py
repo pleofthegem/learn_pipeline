@@ -57,7 +57,7 @@ def test_process_pdf_extracts_dasgupta_like_metadata(
         "Graywater can be reused safely after treatment."
     )
     assert row["abstract_keywords"] == (
-        "Graywater; Indicator organisms; Bacteriophages."
+        "Graywater, Indicator organisms, Bacteriophages."
     )
     assert row["additional_info"] == {
         "name": (
@@ -220,22 +220,22 @@ def test_clean_author_line_removes_marker_only_commas() -> None:
     )
 
 
-def test_standardise_keywords_joins_detected_separator_with_semicolon() -> None:
-    """Check that keyword separators are normalised to semicolons."""
+def test_standardise_keywords_joins_detected_separator_with_comma() -> None:
+    """Check that keyword separators are normalised to commas."""
     assert standardise_keywords("water, sanitation, reuse") == (
-        "water; sanitation; reuse"
+        "water, sanitation, reuse"
     )
     assert standardise_keywords("water ; sanitation; reuse") == (
-        "water; sanitation; reuse"
+        "water, sanitation, reuse"
     )
 
 
 def test_extract_keywords_standardises_comma_separator() -> None:
-    """Check that comma-separated keywords are returned with semicolons."""
+    """Check that comma-separated keywords are returned with commas."""
     assert extract_keywords([
         "Abstract: sample",
         "Keywords: water, sanitation, reuse",
-    ]) == "water; sanitation; reuse"
+    ]) == "water, sanitation, reuse"
 
 
 def test_pdf_input_files_creates_missing_folder(tmp_path: Path) -> None:

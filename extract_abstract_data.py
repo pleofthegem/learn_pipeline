@@ -642,14 +642,15 @@ def default_additional_info_from_values(
 
 
 def standardise_keywords(keywords: str) -> str:
-    """Normalise keyword separators to semicolons.
+    """Normalise keyword separators to commas.
 
     Args:
         keywords: Raw keyword text extracted from a PDF.
 
     Returns:
         str: Keyword text split on the detected separator and joined with
-            `; `. Semicolon is preferred when present, otherwise comma is used.
+            `, `. Semicolon is used for splitting when present, otherwise comma
+            is used.
     """
     keywords = keywords.strip()
     if ";" in keywords:
@@ -661,7 +662,7 @@ def standardise_keywords(keywords: str) -> str:
 
     parts = [part.strip()
              for part in keywords.split(separator) if part.strip()]
-    return "; ".join(parts)
+    return ", ".join(parts)
 
 
 def extract_keywords(lines: list[str]) -> str:

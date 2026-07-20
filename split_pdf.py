@@ -5,6 +5,7 @@ import csv
 import json
 import re
 import shutil
+from math import ceil
 from pathlib import Path
 
 import fitz
@@ -19,8 +20,26 @@ METADATA_CSV = "split_abstracts.csv"
 METADATA_JSON = "split_abstracts.json"
 PDF_SUFFIX = ".pdf"
 CODE_PATTERN = re.compile(r"^T\d+_[OP]\d+$")
+PRESENTATION_PATTERN = re.compile(
+    r"^Presentation\s+(?P<number>\d{1,3})(?:\s+(?P<title>.+))?$",
+    re.IGNORECASE,
+)
 PAGE_PATTERN = re.compile(r"^\d+$")
 SKIP_TOC_LINES = {"CONTENT", "I", "II", "III", "IV", "V"}
+FUZZY_TITLE_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "by",
+    "for",
+    "in",
+    "of",
+    "on",
+    "the",
+    "to",
+    "using",
+    "with",
+}
 METADATA_FIELDS = [
     "source_file",
     "abstract_id",
@@ -129,15 +148,18 @@ def split_folder(
         if path.is_file() and path.suffix.lower() == PDF_SUFFIX
     ]
 
+    split_source_paths: list[Path] = []
     for pdf_path in pdf_paths:
-        metadata.extend(
-            split_pdf(
-                pdf_path=pdf_path,
-                output_folder=staging_folder,
-            )
+        split_metadata = split_pdf(
+            pdf_path=pdf_path,
+            output_folder=staging_folder,
         )
+        if split_metadata:
+            split_source_paths.append(pdf_path)
+        metadata.extend(split_metadata)
 
     copy_split_pdfs(staging_folder, output_folder)
+    remove_split_source_pdfs(split_source_paths, output_folder)
     # Return anything at all?
     return metadata
 
@@ -162,22 +184,35 @@ def split_pdf(
             return []
 
         toc_end_page, entries, page_offset = combined_info
+        matched_entries: list[dict[str, object]] = []
         for entry in entries:
-            entry["pdf_start_page"] = find_title_page(
+            pdf_start_page = find_title_page(
                 pdf=pdf,
                 title=str(entry["title"]),
                 printed_page=int(entry["printed_start_page"]),
                 page_offset=page_offset,
                 scan_start_page=toc_end_page + 1,
             )
+            if pdf_start_page is None:
+                continue
+            entry["pdf_start_page"] = pdf_start_page
+            matched_entries.append(entry)
 
         metadata: list[dict[str, object]] = []
-        for index, entry in enumerate(entries):
+        for index, entry in enumerate(matched_entries):
             start_page = int(entry["pdf_start_page"])
-            if index + 1 < len(entries):
-                end_page = int(entries[index + 1]["pdf_start_page"]) - 1
+            if index + 1 < len(matched_entries):
+                end_page = int(
+                    matched_entries[index + 1]["pdf_start_page"]
+                ) - 1
             else:
                 end_page = pdf.page_count
+            if (
+                start_page < 1
+                or start_page > pdf.page_count
+                or end_page < start_page
+            ):
+                continue
 
             output_file = f"{pdf_path.stem}_{entry['abstract_id']}.pdf"
             save_page_range(pdf, start_page, end_page,
@@ -265,6 +300,15 @@ def parse_toc(
         lines.extend(clean_lines(
             pdf[page_number - 1].get_text("text").splitlines()))
 
+    entries = parse_code_toc_lines(lines)
+    if entries:
+        return entries
+
+    return parse_presentation_toc_lines(lines)
+
+
+def parse_code_toc_lines(lines: list[str]) -> list[dict[str, object]]:
+    """Parse the original `T1_O1` style combined-PDF TOC lines."""
     entries: list[dict[str, object]] = []
     abstract_id: str | None = None
     title_lines: list[str] = []
@@ -296,6 +340,48 @@ def parse_toc(
     return entries
 
 
+def parse_presentation_toc_lines(lines: list[str]) -> list[dict[str, object]]:
+    """Parse `Presentation 01 ... 02` style combined-PDF TOC lines."""
+    entries: list[dict[str, object]] = []
+    section_prefix: str | None = None
+    abstract_number: str | None = None
+    abstract_prefix: str | None = None
+    title_lines: list[str] = []
+
+    for line in lines:
+        lower_line = line.casefold()
+        if lower_line.startswith("oral presentations"):
+            section_prefix = "O"
+            continue
+        if lower_line.startswith("poster presentations"):
+            section_prefix = "P"
+            continue
+
+        match = PRESENTATION_PATTERN.fullmatch(line)
+        if match:
+            abstract_number = match.group("number")
+            abstract_prefix = section_prefix or "PR"
+            title = match.group("title")
+            title_lines = [title.strip()] if title else []
+            continue
+
+        if abstract_number and PAGE_PATTERN.fullmatch(line):
+            entries.append({
+                "abstract_id": f"{abstract_prefix}{int(abstract_number):02d}",
+                "title": " ".join(title_lines),
+                "printed_start_page": int(line),
+            })
+            abstract_number = None
+            abstract_prefix = None
+            title_lines = []
+            continue
+
+        if abstract_number:
+            title_lines.append(line)
+
+    return entries
+
+
 def find_toc_page_range(pdf: fitz.Document) -> tuple[int, int] | None:
     """Find the table-of-contents pages in a combined PDF.
 
@@ -306,12 +392,44 @@ def find_toc_page_range(pdf: fitz.Document) -> tuple[int, int] | None:
         tuple[int, int] | None: First and last 1-based TOC page numbers, or
             None when the expected TOC pattern is not present.
     """
+    code_toc_range = find_code_toc_page_range(pdf)
+    if code_toc_range is not None:
+        return code_toc_range
+
+    return find_presentation_toc_page_range(pdf)
+
+
+def find_code_toc_page_range(pdf: fitz.Document) -> tuple[int, int] | None:
+    """Find TOC pages for the original `CONTENT` plus `T1_O1` style."""
     toc_start_page: int | None = None
     toc_end_page: int | None = None
 
     for page_index in range(pdf.page_count):
         lines = clean_lines(pdf[page_index].get_text("text").splitlines())
         if "CONTENT" in lines:
+            page_number = page_index + 1
+            if toc_start_page is None:
+                toc_start_page = page_number
+            toc_end_page = page_number
+            continue
+
+        if toc_start_page is not None:
+            break
+
+    if toc_start_page is None or toc_end_page is None:
+        return None
+
+    return toc_start_page, toc_end_page
+
+
+def find_presentation_toc_page_range(pdf: fitz.Document) -> tuple[int, int] | None:
+    """Find TOC pages for `Presentation 01` style abstract lists."""
+    toc_start_page: int | None = None
+    toc_end_page: int | None = None
+
+    for page_index in range(pdf.page_count):
+        lines = clean_lines(pdf[page_index].get_text("text").splitlines())
+        if any(PRESENTATION_PATTERN.fullmatch(line) for line in lines):
             page_number = page_index + 1
             if toc_start_page is None:
                 toc_start_page = page_number
@@ -364,7 +482,7 @@ def find_title_page(
     printed_page: int,
     page_offset: int,
     scan_start_page: int,
-) -> int:
+) -> int | None:
     """Find the actual PDF page where an abstract title appears.
 
     Args:
@@ -375,18 +493,46 @@ def find_title_page(
         scan_start_page: First 1-based PDF page to use for fallback scanning.
 
     Returns:
-        int: 1-based PDF page containing the abstract title.
+        int | None: 1-based PDF page containing the abstract title, or `None`
+            when no matching page can be found.
     """
-    # If it's telling the truth
     expected_page = printed_page + page_offset
-    if page_has_title(pdf, expected_page, title):
-        return expected_page
-    # If the contents page lies, go through entire document to find it.
-    for page_number in range(scan_start_page, pdf.page_count + 1):
+    guided_pages = nearby_page_numbers(
+        expected_page=expected_page,
+        scan_start_page=scan_start_page,
+        page_count=pdf.page_count,
+    )
+    for page_number in guided_pages:
         if page_has_title(pdf, page_number, title):
             return page_number
 
-    return expected_page
+    for page_number in range(scan_start_page, pdf.page_count + 1):
+        if page_number in guided_pages:
+            continue
+        if page_has_title(pdf, page_number, title):
+            return page_number
+
+    return None
+
+
+def nearby_page_numbers(
+    expected_page: int,
+    scan_start_page: int,
+    page_count: int,
+    radius: int = 3,
+) -> list[int]:
+    """Return nearby page numbers ordered by distance from an expected page."""
+    page_numbers: list[int] = []
+    for distance in range(radius + 1):
+        for page_number in (expected_page - distance, expected_page + distance):
+            if (
+                page_number < scan_start_page
+                or page_number > page_count
+                or page_number in page_numbers
+            ):
+                continue
+            page_numbers.append(page_number)
+    return page_numbers
 
 
 def page_has_title(pdf: fitz.Document, page_number: int, title: str) -> bool:
@@ -406,7 +552,26 @@ def page_has_title(pdf: fitz.Document, page_number: int, title: str) -> bool:
     page_text = " ".join(
         clean_lines(pdf[page_number - 1].get_text("text").splitlines())
     )
-    return normalise(title) in normalise(page_text)
+    if normalise(title) in normalise(page_text):
+        return True
+
+    title_tokens = significant_title_tokens(title)
+    if len(title_tokens) < 4:
+        return False
+
+    page_tokens = set(significant_title_tokens(page_text))
+    matched_tokens = [token for token in title_tokens if token in page_tokens]
+    required_matches = max(4, ceil(len(title_tokens) * 0.85))
+    return len(matched_tokens) >= required_matches
+
+
+def significant_title_tokens(text: str) -> list[str]:
+    """Return normalised title tokens used for fuzzy title matching."""
+    return [
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if token not in FUZZY_TITLE_STOPWORDS
+    ]
 
 
 def save_page_range(
@@ -455,6 +620,33 @@ def copy_split_pdfs(staging_folder: Path, output_folder: Path) -> list[Path]:
         copied.append(destination)
 
     return copied
+
+
+def remove_split_source_pdfs(
+    source_paths: list[Path],
+    output_folder: Path,
+) -> list[Path]:
+    """Remove combined source PDFs from the final output folder after splitting.
+
+    Args:
+        source_paths: Combined PDF paths that produced at least one split PDF.
+        output_folder: Final output folder that should contain atomic PDFs only.
+
+    Returns:
+        list[Path]: Paths removed from the output folder.
+    """
+    removed: list[Path] = []
+    output_folder = Path(output_folder)
+
+    for source_path in source_paths:
+        output_path = output_folder / source_path.name
+        if not output_path.is_file():
+            continue
+
+        output_path.unlink()
+        removed.append(output_path)
+
+    return removed
 
 
 def clean_folder(folder: Path) -> None:

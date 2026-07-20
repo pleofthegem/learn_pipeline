@@ -28,7 +28,6 @@ CSV_FIELDNAMES: list[str] = [
     "orcids_removed_count",
     "phones_removed_count",
     "clean_text_file",
-    "clean_text",
 ]
 
 # Patterns for personal/contact identifiers removed from extracted text.
@@ -415,7 +414,6 @@ def anonymise_pdf_abstracts(
             "orcids_removed_count": result["orcids_removed_count"],
             "phones_removed_count": result["phones_removed_count"],
             "clean_text_file": str(clean_file),
-            "clean_text": result["clean_text"],
         })
 
     output_rows: list[Row] = rows

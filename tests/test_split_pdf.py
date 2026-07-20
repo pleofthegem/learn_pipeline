@@ -8,8 +8,10 @@ from split_pdf import (
     INPUT_FOLDER,
     METADATA_CSV,
     METADATA_JSON,
+    find_title_page,
     find_toc_page_range,
     is_combined_pdf,
+    page_has_title,
     parse_toc,
     parse_args,
     split_combined_pdfs,
@@ -48,6 +50,76 @@ def write_combined_pdf(path: Path, cover_pages: int = 1) -> None:
     add_page(pdf, "First abstract continuation")
     add_page(pdf, "Second Abstract\nWrapped Title\nAuthor Two\nIntroduction\nBody")
     add_page(pdf, "Second abstract continuation")
+
+    pdf.save(path)
+    pdf.close()
+
+
+def write_presentation_combined_pdf(path: Path) -> None:
+    """Create a combined PDF with a Water Board style presentation TOC."""
+    pdf = fitz.open()
+    add_page(pdf, "Cover page")
+
+    toc = pdf.new_page()
+    toc.insert_text(
+        (72, 72),
+        "\n".join(
+            [
+                "Oral Presentations",
+                "Page No.",
+                "Session 01",
+                "Presentation 01",
+                "First Presentation Title",
+                "2",
+                "Presentation 02 Second Presentation",
+                "Wrapped Title",
+                "4",
+                "Poster Presentations (1 Papers)",
+                "Presentation 01 Poster Presentation Title",
+                "6",
+            ]
+        ),
+        fontsize=12,
+    )
+
+    add_page(pdf, "First Presentation Title\nAuthor One\nAbstract\nBody")
+    add_page(pdf, "First presentation continuation")
+    add_page(pdf, "Second Presentation\nWrapped Title\nAuthor Two\nAbstract\nBody")
+    add_page(pdf, "Second presentation continuation")
+    add_page(pdf, "Poster Presentation Title\nAuthor Three\nAbstract\nBody")
+    add_page(pdf, "Poster presentation continuation")
+
+    pdf.save(path)
+    pdf.close()
+
+
+def write_presentation_combined_pdf_with_missing_entry(path: Path) -> None:
+    """Create a presentation TOC where one listed entry has no body page."""
+    pdf = fitz.open()
+    add_page(pdf, "Cover page")
+
+    toc = pdf.new_page()
+    toc.insert_text(
+        (72, 72),
+        "\n".join(
+            [
+                "Oral Presentations",
+                "Page No.",
+                "Presentation 01 First Presentation Title",
+                "2",
+                "Presentation 02 Missing Presentation Title",
+                "4",
+                "Presentation 03 Second Presentation Title",
+                "4",
+            ]
+        ),
+        fontsize=12,
+    )
+
+    add_page(pdf, "First Presentation Title\nAuthor One\nAbstract\nBody")
+    add_page(pdf, "First presentation continuation")
+    add_page(pdf, "Second Presentation Title\nAuthor Two\nAbstract\nBody")
+    add_page(pdf, "Second presentation continuation")
 
     pdf.save(path)
     pdf.close()
@@ -103,6 +175,33 @@ def test_parse_toc_extracts_ids_titles_and_printed_pages(tmp_path: Path) -> None
     ]
 
 
+def test_parse_toc_extracts_presentation_style_entries(tmp_path: Path) -> None:
+    """Check that Water Board style presentation TOC entries are parsed."""
+    source = tmp_path / "combined.pdf"
+    write_presentation_combined_pdf(source)
+
+    with fitz.open(source) as pdf:
+        entries = parse_toc(pdf)
+
+    assert entries == [
+        {
+            "abstract_id": "O01",
+            "title": "First Presentation Title",
+            "printed_start_page": 2,
+        },
+        {
+            "abstract_id": "O02",
+            "title": "Second Presentation Wrapped Title",
+            "printed_start_page": 4,
+        },
+        {
+            "abstract_id": "P01",
+            "title": "Poster Presentation Title",
+            "printed_start_page": 6,
+        },
+    ]
+
+
 def test_find_toc_page_range_detects_content_pages(tmp_path: Path) -> None:
     """Check that TOC pages are derived from the expected TOC pattern."""
     source = tmp_path / "combined.pdf"
@@ -112,10 +211,27 @@ def test_find_toc_page_range_detects_content_pages(tmp_path: Path) -> None:
         assert find_toc_page_range(pdf) == (2, 2)
 
 
+def test_find_toc_page_range_detects_presentation_pages(tmp_path: Path) -> None:
+    """Check that presentation-list TOC pages can be detected."""
+    source = tmp_path / "combined.pdf"
+    write_presentation_combined_pdf(source)
+
+    with fitz.open(source) as pdf:
+        assert find_toc_page_range(pdf) == (2, 2)
+
+
 def test_is_combined_pdf_accepts_expected_combined_format(tmp_path: Path) -> None:
     """Check that the naive guard recognises the supported combined format."""
     source = tmp_path / "combined.pdf"
     write_combined_pdf(source)
+
+    assert is_combined_pdf(source)
+
+
+def test_is_combined_pdf_accepts_presentation_combined_format(tmp_path: Path) -> None:
+    """Check that presentation-list PDFs are recognised as combined."""
+    source = tmp_path / "combined.pdf"
+    write_presentation_combined_pdf(source)
 
     assert is_combined_pdf(source)
 
@@ -175,8 +291,100 @@ def test_split_folder_writes_one_pdf_per_toc_entry(tmp_path: Path) -> None:
         assert "Second Abstract" in second[0].get_text()
 
 
+def test_split_folder_writes_presentation_style_pdfs(tmp_path: Path) -> None:
+    """Check that presentation-style combined PDFs are split by TOC entries."""
+    input_folder = tmp_path / "combined"
+    output_folder = tmp_path / "raw"
+    staging_folder = tmp_path / "split_staging"
+    input_folder.mkdir()
+    write_presentation_combined_pdf(input_folder / "water_board.pdf")
+
+    metadata = split_folder(
+        input_folder=input_folder,
+        output_folder=output_folder,
+        staging_folder=staging_folder,
+    )
+
+    assert [row["abstract_id"] for row in metadata] == ["O01", "O02", "P01"]
+    assert [row["pdf_start_page"] for row in metadata] == [3, 5, 7]
+    assert [row["page_count"] for row in metadata] == [2, 2, 2]
+    assert (output_folder / "water_board_O01.pdf").exists()
+    assert (output_folder / "water_board_O02.pdf").exists()
+    assert (output_folder / "water_board_P01.pdf").exists()
+
+    with fitz.open(output_folder / "water_board_P01.pdf") as poster:
+        assert poster.page_count == 2
+        assert "Poster Presentation Title" in poster[0].get_text()
+
+
+def test_page_has_title_tolerates_minor_toc_typos(tmp_path: Path) -> None:
+    """Check that real title pages survive small TOC extraction typos."""
+    source = tmp_path / "title.pdf"
+    pdf = fitz.open()
+    add_page(
+        pdf,
+        (
+            "The Impact of Geological Features and Lithological Composition\n"
+            "on Water Quality in the Upper Kelani River Basin"
+        ),
+    )
+    pdf.save(source)
+    pdf.close()
+
+    with fitz.open(source) as pdf:
+        assert page_has_title(
+            pdf,
+            1,
+            (
+                "The Impact Oo Geological Features and Lithological "
+                "Composition on Water Quality in the Upper Kelani River Basin"
+            ),
+        )
+
+
+def test_find_title_page_returns_none_when_title_is_missing(tmp_path: Path) -> None:
+    """Check that TOC page numbers are not used as unmatched fallbacks."""
+    source = tmp_path / "missing.pdf"
+    pdf = fitz.open()
+    add_page(pdf, "Cover page")
+    add_page(pdf, "Different Presentation Title")
+    pdf.save(source)
+    pdf.close()
+
+    with fitz.open(source) as pdf:
+        assert find_title_page(
+            pdf=pdf,
+            title="Missing Presentation Title",
+            printed_page=1,
+            page_offset=1,
+            scan_start_page=1,
+        ) is None
+
+
+def test_split_folder_skips_impossible_presentation_ranges(tmp_path: Path) -> None:
+    """Check that missing TOC entries do not create invalid split PDFs."""
+    input_folder = tmp_path / "combined"
+    output_folder = tmp_path / "raw"
+    staging_folder = tmp_path / "split_staging"
+    input_folder.mkdir()
+    write_presentation_combined_pdf_with_missing_entry(
+        input_folder / "water_board.pdf"
+    )
+
+    metadata = split_folder(
+        input_folder=input_folder,
+        output_folder=output_folder,
+        staging_folder=staging_folder,
+    )
+
+    assert [row["abstract_id"] for row in metadata] == ["O01", "O03"]
+    assert not (output_folder / "water_board_O02.pdf").exists()
+    assert (output_folder / "water_board_O01.pdf").exists()
+    assert (output_folder / "water_board_O03.pdf").exists()
+
+
 def test_split_folder_supports_same_input_and_output_folder(tmp_path: Path) -> None:
-    """Check that new split PDFs are not processed again during the same run."""
+    """Check that same-folder splitting leaves only atomic output PDFs."""
     raw_folder = tmp_path / "raw"
     staging_folder = tmp_path / "split_staging"
     raw_folder.mkdir()
@@ -189,11 +397,33 @@ def test_split_folder_supports_same_input_and_output_folder(tmp_path: Path) -> N
     )
 
     assert [row["abstract_id"] for row in metadata] == ["T1_O1", "T1_O2"]
-    assert (raw_folder / "ebook.pdf").exists()
+    assert not (raw_folder / "ebook.pdf").exists()
     assert (raw_folder / "ebook_T1_O1.pdf").exists()
     assert (raw_folder / "ebook_T1_O2.pdf").exists()
     assert (staging_folder / "ebook_T1_O1.pdf").exists()
     assert (staging_folder / "ebook_T1_O2.pdf").exists()
+
+
+def test_split_folder_keeps_unsplit_pdf_with_same_input_and_output(
+    tmp_path: Path,
+) -> None:
+    """Check that ordinary same-folder PDFs are not removed."""
+    raw_folder = tmp_path / "raw"
+    staging_folder = tmp_path / "split_staging"
+    raw_folder.mkdir()
+    ordinary_pdf = fitz.open()
+    add_page(ordinary_pdf, "This PDF has no table of contents.")
+    ordinary_pdf.save(raw_folder / "ordinary.pdf")
+    ordinary_pdf.close()
+
+    metadata = split_folder(
+        input_folder=raw_folder,
+        output_folder=raw_folder,
+        staging_folder=staging_folder,
+    )
+
+    assert metadata == []
+    assert (raw_folder / "ordinary.pdf").exists()
 
 
 def test_split_folder_cleans_staging_folder_before_splitting(tmp_path: Path) -> None:
