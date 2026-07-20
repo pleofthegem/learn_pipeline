@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 import anonymise_abstracts
+import clear_outputs
 import convert_to_pdf
 import extract_abstract_data
 import split_pdf
@@ -88,6 +89,20 @@ def run_pipeline(
     Returns:
         dict[str, int]: Counts from each pipeline stage.
     """
+    output_folders = [
+        Path(aggregate_folder),
+        Path(raw_folder),
+        Path(split_folder),
+        Path(clean_output_folder),
+        Path(extract_csv_path).parent,
+        Path(extract_json_path).parent,
+        Path(anonymise_csv_path).parent,
+        Path(anonymise_json_path).parent,
+    ]
+
+    print('Clearing generated outputs...')
+    clear_outputs.clear_folders(output_folders)
+
     print('Collecting files to convert...')
     _, converted_pdfs = convert_to_pdf.convert_inputs_to_pdfs(
         input_folder=Path(input_folder),

@@ -19,6 +19,20 @@ def test_run_pipeline_calls_each_module_api_in_order(
     anonymise_csv_path = tmp_path / "abstract_csv" / "anonymised_abstracts.csv"
     anonymise_json_path = tmp_path / "abstract_json" / "anonymised_abstracts.json"
 
+    def fake_clear_folders(folders: list[Path]) -> dict[str, int]:
+        calls.append("clear")
+        assert folders == [
+            aggregate_folder,
+            raw_folder,
+            split_folder,
+            clean_folder,
+            extract_csv_path.parent,
+            extract_json_path.parent,
+            anonymise_csv_path.parent,
+            anonymise_json_path.parent,
+        ]
+        return {str(folder): 0 for folder in folders}
+
     def fake_convert_inputs_to_pdfs(
         input_folder: Path,
         aggregate_dir: Path,
@@ -90,6 +104,11 @@ def test_run_pipeline_calls_each_module_api_in_order(
         "anonymise_pdf_abstracts",
         fake_anonymise_pdf_abstracts,
     )
+    monkeypatch.setattr(
+        pipeline.clear_outputs,
+        "clear_folders",
+        fake_clear_folders,
+    )
 
     counts = pipeline.run_pipeline(
         input_folder=input_folder,
@@ -107,7 +126,7 @@ def test_run_pipeline_calls_each_module_api_in_order(
         },
     )
 
-    assert calls == ["convert", "split", "extract", "anonymise"]
+    assert calls == ["clear", "convert", "split", "extract", "anonymise"]
     assert counts == {
         "converted_pdfs": 1,
         "split_abstracts": 1,
