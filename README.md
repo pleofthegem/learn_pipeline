@@ -54,6 +54,9 @@ Runs conversion, combined-PDF splitting, metadata extraction, and anonymisation.
 python main.py
 ```
 
+`main.py` clears generated output folders before each run so the new outputs
+can be inspected without leftovers from the previous run.
+
 Use optional defaults when the conference name and place are known for a batch.
 These values are only used when an individual PDF does not contain conference
 metadata itself.
@@ -207,11 +210,25 @@ Input folders:
 
 Output folders:
 
+- `abstracts_raw/`: PDFs produced by conversion and split PDFs used by later
+  stages.
 - `abstracts_aggregated/`: staging folder used by `convert_to_pdf.py`.
 - `abstracts_split/`: staging folder and metadata output used by `split_pdf.py`.
 - `abstract_csv/`: CSV exports from metadata extraction and anonymisation.
 - `abstract_json/`: JSON exports from metadata extraction and anonymisation.
 - `abstracts_clean/`: cleaned text files from anonymisation.
+
+## Clear Generated Outputs
+
+To start a fresh run with the same input files, clear generated outputs:
+
+```bash
+python clear_outputs.py
+```
+
+This empties `abstract_csv/`, `abstract_json/`, `abstracts_aggregated/`,
+`abstracts_clean/`, `abstracts_raw/`, and `abstracts_split/`. It leaves
+`input/` untouched.
 
 ## Tests
 

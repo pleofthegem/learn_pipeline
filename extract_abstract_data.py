@@ -64,6 +64,11 @@ SECTION_HEADINGS: set[str] = {
     "significance of the research",
     "references",
 }
+PLACEHOLDER_LINES: set[str] = {
+    "this is a sample abstract title",
+    "author name author name initials then surnames separated by commas appear here",
+}
+WATER_BOARD_HEADER = "national water supply and drainage board sri lanka"
 
 KEYWORDS_RE = re.compile(
     r"^\s*(?:keywords?|key\s+words?|index\s+terms)\s*[:.\-–—]?\s*(.*)$",
@@ -73,6 +78,27 @@ ABSTRACT_RE = re.compile(
     r"^\s*abstract(?:\s+of\s+the\s+project)?\s*[:.\-–—]?\s*(.*)$",
     re.IGNORECASE,
 )
+AUTHOR_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'.-]*")
+AUTHOR_INITIALS_ONLY_RE = re.compile(r"(?:[A-Z]\.?){1,10}")
+AUTHOR_MARKER_SYMBOL_RE = re.compile(r"[*†‡§]")
+AFFILIATION_KEYWORDS: set[str] = {
+    "affiliation",
+    "board",
+    "centre",
+    "center",
+    "college",
+    "department",
+    "division",
+    "faculty",
+    "institute",
+    "laboratory",
+    "ministry",
+    "national",
+    "organisation",
+    "organization",
+    "school",
+    "university",
+}
 EVENT_KEYWORD_RE = re.compile(
     r"\b("
     r"conference|congress|symposium|workshop|summit|forum|meeting|"
@@ -254,6 +280,30 @@ def comparable_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def is_placeholder_line(line: str) -> bool:
+    """Check whether a line is leftover template placeholder text."""
+    return comparable_text(line) in PLACEHOLDER_LINES
+
+
+def is_water_board_header_line(line: str) -> bool:
+    """Check whether a line is the Water Board abstract header."""
+    return comparable_text(line) == WATER_BOARD_HEADER
+
+
+def is_page_number_line(line: str) -> bool:
+    """Check whether a line is only a printed page number."""
+    return bool(re.fullmatch(r"\d{1,4}", line.strip()))
+
+
+def is_ignored_water_board_title_line(line: str) -> bool:
+    """Check whether a Water Board pre-author line is not part of the title."""
+    return (
+        is_water_board_header_line(line)
+        or is_page_number_line(line)
+        or is_placeholder_line(line)
+    )
+
+
 def title_hint_from_filename(path: Path) -> str:
     """Infer a title hint from filenames shaped like `Author - Title.pdf`.
 
@@ -306,7 +356,7 @@ def find_title_from_filename(
     expected = comparable_text(hint)
     candidates = [
         (index, line) for index, line in pre_section_lines(lines)
-        if not is_contact_line(line.text)
+        if not is_contact_line(line.text) and not is_placeholder_line(line.text)
     ]
     best_score = 0.0
     best_title = ""
@@ -343,7 +393,7 @@ def find_title_from_layout(lines: list[TextLine]) -> tuple[str, int]:
     """
     candidates = [
         (index, line) for index, line in pre_section_lines(lines)
-        if not is_contact_line(line.text)
+        if not is_contact_line(line.text) and not is_placeholder_line(line.text)
     ]
     if not candidates:
         return "", -1
@@ -371,6 +421,35 @@ def find_title_from_layout(lines: list[TextLine]) -> tuple[str, int]:
     return " ".join(title_lines), last_index
 
 
+def find_title_from_water_board_layout(
+    lines: list[TextLine],
+) -> tuple[str, int] | None:
+    """Find Water Board titles by joining text before the author list starts."""
+    if not any(is_water_board_header_line(line.text) for line in lines[:5]):
+        return None
+
+    texts = [line.text for line in lines]
+    section_index = first_section_index(texts)
+    limit = section_index if section_index is not None else len(lines)
+    author_index = find_author_start_index(lines, limit)
+    if author_index is None:
+        return None
+
+    title_lines: list[str] = []
+    last_index = -1
+    for index, line in enumerate(lines[:author_index]):
+        text = line.text
+        if is_contact_line(text) or is_ignored_water_board_title_line(text):
+            continue
+
+        title_lines.append(text)
+        last_index = index
+
+    if not title_lines:
+        return None
+    return " ".join(title_lines), last_index
+
+
 def clean_author_line(line: str) -> str:
     """Remove common author footnote markers from an author line.
 
@@ -380,11 +459,150 @@ def clean_author_line(line: str) -> str:
     Returns:
         str: Author line with simple superscript-style markers removed.
     """
-    line = re.sub(r"[*\d]+(?=\s|,|\.|$)", "", line)
-    line = re.sub(r"\s*,\s*,+\s*", ", ", line)
-    line = re.sub(r"\s+,", ",", line)
-    line = re.sub(r"\s+", " ", line)
-    return line.strip(" .,;")
+    return ", ".join(parse_author_names(line))
+
+
+def clean_author_name(name: str) -> str:
+    """Remove footnote markers from one author name."""
+    name = re.sub(r"[*†‡§]+", "", name)
+    name = re.sub(r"\d+(?=\s|,|\.|$)", "", name)
+    name = re.sub(r"\s+", " ", name)
+    return name.strip(" .,;")
+
+
+def normalise_author_separators(text: str) -> str:
+    """Normalise common author separators before comma splitting."""
+    return re.sub(r"\s+\band\s+(?=[A-Z])", ", ", text)
+
+
+def is_initials_only(text: str) -> bool:
+    """Check whether text is only author initials."""
+    text = clean_author_name(text).replace(" ", "")
+    return bool(AUTHOR_INITIALS_ONLY_RE.fullmatch(text))
+
+
+def parse_author_names(text: str) -> list[str]:
+    """Split a comma-separated author list into cleaned author names."""
+    text = normalise_author_separators(text)
+    names: list[str] = []
+    pending_initials = ""
+    for part in text.split(","):
+        name = clean_author_name(part)
+        if name:
+            if is_initials_only(name):
+                pending_initials = (
+                    f"{pending_initials} {name}".strip()
+                    if pending_initials else name
+                )
+                continue
+            if pending_initials:
+                name = f"{pending_initials} {name}"
+                pending_initials = ""
+            names.append(name)
+    if pending_initials:
+        names.append(pending_initials)
+    return names
+
+
+def is_affiliation_text(text: str) -> bool:
+    """Check whether text looks like institutional affiliation metadata."""
+    lower_text = text.lower()
+    return any(keyword in lower_text for keyword in AFFILIATION_KEYWORDS)
+
+
+def is_probable_author_name(name: str) -> bool:
+    """Check whether one comma-separated item looks like an author name."""
+    cleaned = clean_author_name(name)
+    if not cleaned or is_contact_line(cleaned) or is_placeholder_line(cleaned):
+        return False
+    if is_affiliation_text(cleaned):
+        return False
+
+    words = AUTHOR_WORD_RE.findall(cleaned.replace(".", " "))
+    if len(words) < 2 or len(words) > 10:
+        return False
+
+    return (
+        any(word[0].isupper() for word in words)
+        and any(len(word) > 1 for word in words)
+    )
+
+
+def is_probable_author_line(line: str) -> bool:
+    """Check whether a line is likely part of a comma-separated author list."""
+    if (
+        is_contact_line(line)
+        or is_placeholder_line(line)
+        or is_section_heading(line)
+        or KEYWORDS_RE.match(line)
+        or is_affiliation_text(line)
+    ):
+        return False
+    if "," not in line and not AUTHOR_MARKER_SYMBOL_RE.search(line):
+        return False
+
+    probable_names = [
+        name for name in parse_author_names(line)
+        if is_probable_author_name(name)
+    ]
+    if len(probable_names) >= 2:
+        return True
+
+    return bool(AUTHOR_MARKER_SYMBOL_RE.search(line)) and len(probable_names) == 1
+
+
+def is_author_fragment_line(line: str) -> bool:
+    """Check whether a line can be part of a wrapped author list."""
+    if (
+        is_contact_line(line)
+        or is_placeholder_line(line)
+        or is_section_heading(line)
+        or KEYWORDS_RE.match(line)
+        or is_affiliation_text(line)
+    ):
+        return False
+
+    return (
+        is_probable_author_line(line)
+        or is_initials_only(line)
+        or bool(AUTHOR_MARKER_SYMBOL_RE.search(line))
+    )
+
+
+def is_author_marker_fragment_line(line: str) -> bool:
+    """Check whether a line has author marker symbols and can belong to authors."""
+    return (
+        bool(AUTHOR_MARKER_SYMBOL_RE.search(line))
+        and not is_contact_line(line)
+        and not is_placeholder_line(line)
+        and not is_section_heading(line)
+        and not KEYWORDS_RE.match(line)
+        and not is_affiliation_text(line)
+    )
+
+
+def find_author_start_index(
+    lines: list[TextLine],
+    limit: int,
+) -> int | None:
+    """Find where the pre-section author block starts."""
+    for index, line in enumerate(lines[:limit]):
+        text = line.text
+        if not (
+            is_probable_author_line(text)
+            or is_author_marker_fragment_line(text)
+        ):
+            continue
+
+        start_index = index
+        while (
+            start_index > 0
+            and is_initials_only(lines[start_index - 1].text)
+        ):
+            start_index -= 1
+        return start_index
+
+    return None
 
 
 def extract_title(lines: list[TextLine], path: Path) -> tuple[str, int]:
@@ -402,11 +620,14 @@ def extract_title(lines: list[TextLine], path: Path) -> tuple[str, int]:
     filename_title = find_title_from_filename(lines, path)
     if filename_title:
         return filename_title
+    water_board_title = find_title_from_water_board_layout(lines)
+    if water_board_title:
+        return water_board_title
     return find_title_from_layout(lines)
 
 
 def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
-    """Extract authors from the pre-section lines after the title.
+    """Extract authors from comma-separated pre-section author lists.
 
     Args:
         lines: Text lines extracted from a PDF.
@@ -418,23 +639,38 @@ def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
     """
     texts = [line.text for line in lines]
     section_index = first_section_index(texts)
-    limit = section_index if section_index is not None else min(len(lines), 12)
-    authors: list[str] = []
+    limit = section_index if section_index is not None else len(lines)
+    author_lines: list[str] = []
+    start = find_author_start_index(lines, limit)
+    if start is None:
+        start = max(title_end_index + 1, 0)
 
-    for line in lines[title_end_index + 1:limit]:
+    for line in lines[start:limit]:
         text = line.text
-        if is_contact_line(text):
+        if is_section_heading(text):
+            break
+
+        if is_author_fragment_line(text):
+            author_lines.append(text)
+            continue
+        if author_lines:
+            break
+
+    if author_lines:
+        return ", ".join(parse_author_names(" ".join(author_lines)))
+
+    for line in lines[start:limit]:
+        text = line.text
+        if is_contact_line(text) or is_placeholder_line(text):
             continue
         if is_section_heading(text):
             break
 
         author = clean_author_line(text)
-        if author:
-            authors.append(author)
-        if authors:
-            break
+        if author and is_probable_author_name(author):
+            return author
 
-    return "; ".join(authors)
+    return ""
 
 
 def compact_info_text(text: str) -> str:

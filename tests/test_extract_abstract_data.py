@@ -2,6 +2,7 @@ import csv
 import json
 from pathlib import Path
 
+import fitz
 import pytest
 
 from conftest import write_sample_pdf
@@ -199,6 +200,122 @@ def test_process_pdf_uses_filename_hint_instead_of_fixed_header_markers(
 
     assert row["abstract_title"] == "Flexible Wetland Treatment Study"
     assert row["abstract_authors"] == "A Patel, B Dlamini"
+
+
+def test_process_pdf_ignores_template_placeholder_title(
+    tmp_path: Path,
+) -> None:
+    """Check that leftover template title text does not become metadata."""
+    path = tmp_path / "Water Board 2026_O02.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    y = 72
+    for text, size in [
+        ("National Water Supply and Drainage Board, Sri Lanka.", 8),
+        ("04", 8),
+        ("This is a Sample Abstract Title", 16),
+        (
+            "Author Name*, Author Name**, initials then surnames, "
+            "separated by commas, appear here",
+            10,
+        ),
+        ("Evaluating the Multifunctional Benefits of Urban Stormwater", 16),
+        ("Nature-Based Technologies", 16),
+        ("Md Tashdedul Haque, Lee -Hyung Kim*", 10),
+        (
+            "Keywords: LID technologies; nature-based solutions; "
+            "soil organic carbon; urban heat island",
+            12,
+        ),
+        ("Abstract: Rapid urbanization has intensified environmental issues.", 12),
+    ]:
+        page.insert_text((72, y), text, fontsize=size)
+        y += size + 8
+    pdf.save(path)
+    pdf.close()
+
+    row = process_pdf(path)
+
+    assert row["abstract_title"] == (
+        "Evaluating the Multifunctional Benefits of Urban Stormwater "
+        "Nature-Based Technologies"
+    )
+    assert row["abstract_authors"] == "Md Tashdedul Haque, Lee -Hyung Kim"
+
+
+def test_process_pdf_extracts_wrapped_comma_separated_authors(
+    tmp_path: Path,
+) -> None:
+    """Check that wrapped author lists are joined before comma parsing."""
+    path = tmp_path / "Example - Algal Blooms in Drinking Water Supply Reservoirs.pdf"
+    write_sample_pdf(
+        path,
+        [
+            "National Water Supply and Drainage Board, Sri Lanka.",
+            "226",
+            "Algal Blooms in Drinking Water Supply Reservoirs",
+            (
+                "L. Wijewardene*, S. Senevirathne**, R. Jayawardena***, "
+                "U. Ulrich****, P. Drechsel*****, J. P."
+            ),
+            "Simaika******, S. K. Weragoda*******, I. Werellagama********",
+            "*Department of Limnology and Water Technology, University of Ruhuna",
+            "**Department of Limnology and Water Technology, University of Ruhuna",
+            "Abstract: Reservoir algal blooms can affect drinking water safety.",
+            "Keywords: algae; reservoirs; drinking water",
+        ],
+    )
+
+    row = process_pdf(path)
+
+    assert row["abstract_authors"] == (
+        "L. Wijewardene, S. Senevirathne, R. Jayawardena, "
+        "U. Ulrich, P. Drechsel, J. P. Simaika, "
+        "S. K. Weragoda, I. Werellagama"
+    )
+
+
+def test_process_pdf_extracts_water_board_title_until_author_line(
+    tmp_path: Path,
+) -> None:
+    """Check that mixed-size Water Board title lines are joined."""
+    path = tmp_path / "Water Board 2026_O68.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    y = 72
+    for text, size in [
+        ("National Water Supply and Drainage Board, Sri Lanka.", 8),
+        ("162", 8),
+        ("Assessing", 18),
+        ("Outcome-Based Optimization of Electrocoagulation-Flotation for", 16),
+        ("Sustainable Sewage Wastewater Reclamation and Reuse", 16),
+        ("Polisetty Venkateswara Rao*, Ashish Dwivedi**", 10),
+        (
+            "*Water and Environment Division, Department of Civil Engineering, "
+            "National Institute of Technology",
+            11,
+        ),
+        (
+            "Keywords: Electrocoagulation; Sewage wastewater; "
+            "Response surface methodology",
+            12,
+        ),
+        ("Abstract: This study investigates electrocoagulation-flotation.", 12),
+    ]:
+        page.insert_text((72, y), text, fontsize=size)
+        y += size + 8
+    pdf.save(path)
+    pdf.close()
+
+    row = process_pdf(path)
+
+    assert row["abstract_title"] == (
+        "Assessing Outcome-Based Optimization of Electrocoagulation-Flotation "
+        "for Sustainable Sewage Wastewater Reclamation and Reuse"
+    )
+    assert row["abstract_authors"] == (
+        "Polisetty Venkateswara Rao, Ashish Dwivedi"
+    )
 
 
 def test_process_pdf_rejects_non_pdf_file(tmp_path: Path) -> None:

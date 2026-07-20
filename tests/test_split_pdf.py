@@ -342,6 +342,49 @@ def test_page_has_title_tolerates_minor_toc_typos(tmp_path: Path) -> None:
         )
 
 
+def test_find_title_page_ignores_title_words_in_continuation_body(
+    tmp_path: Path,
+) -> None:
+    """Check that continuation pages cannot be mistaken for title pages."""
+    source = tmp_path / "title.pdf"
+    title = "Future Water Reservoir Supply Methods"
+    pdf = fitz.open()
+    add_page(
+        pdf,
+        "\n".join(
+            [
+                "IWA Water Safety Conference & Exhibition 2026",
+                "101",
+                "Methodology:",
+                "continuation line 1",
+                "continuation line 2",
+                "continuation line 3",
+                "continuation line 4",
+                "continuation line 5",
+                "continuation line 6",
+                "continuation line 7",
+                "continuation line 8",
+                "continuation line 9",
+                "continuation line 10",
+                "The Future Water Reservoir Supply Methods were discussed.",
+            ]
+        ),
+    )
+    add_page(pdf, f"{title}\nAuthor One\nAbstract\nBody")
+    pdf.save(source)
+    pdf.close()
+
+    with fitz.open(source) as pdf:
+        assert not page_has_title(pdf, 1, title)
+        assert find_title_page(
+            pdf=pdf,
+            title=title,
+            printed_page=1,
+            page_offset=0,
+            scan_start_page=1,
+        ) == 2
+
+
 def test_find_title_page_returns_none_when_title_is_missing(tmp_path: Path) -> None:
     """Check that TOC page numbers are not used as unmatched fallbacks."""
     source = tmp_path / "missing.pdf"

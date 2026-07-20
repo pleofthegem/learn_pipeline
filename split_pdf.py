@@ -40,6 +40,7 @@ FUZZY_TITLE_STOPWORDS = {
     "using",
     "with",
 }
+TITLE_MATCH_LINE_LIMIT = 12
 METADATA_FIELDS = [
     "source_file",
     "abstract_id",
@@ -536,7 +537,7 @@ def nearby_page_numbers(
 
 
 def page_has_title(pdf: fitz.Document, page_number: int, title: str) -> bool:
-    """Check whether a PDF page contains a TOC title.
+    """Check whether a PDF page starts with a TOC title.
 
     Args:
         pdf: Open PDF document.
@@ -544,25 +545,29 @@ def page_has_title(pdf: fitz.Document, page_number: int, title: str) -> bool:
         title: Title to search for.
 
     Returns:
-        bool: True when the normalised title appears in the page text.
+        bool: True when the normalised title appears near the top of the page.
     """
     if page_number < 1 or page_number > pdf.page_count:
         return False
 
-    page_text = " ".join(
-        clean_lines(pdf[page_number - 1].get_text("text").splitlines())
-    )
-    if normalise(title) in normalise(page_text):
+    page_lines = clean_lines(pdf[page_number - 1].get_text("text").splitlines())
+    title_area = title_match_area(page_lines)
+    if normalise(title) in normalise(title_area):
         return True
 
     title_tokens = significant_title_tokens(title)
     if len(title_tokens) < 4:
         return False
 
-    page_tokens = set(significant_title_tokens(page_text))
+    page_tokens = set(significant_title_tokens(title_area))
     matched_tokens = [token for token in title_tokens if token in page_tokens]
     required_matches = max(4, ceil(len(title_tokens) * 0.85))
     return len(matched_tokens) >= required_matches
+
+
+def title_match_area(lines: list[str]) -> str:
+    """Return the page region used to decide whether a title starts a page."""
+    return " ".join(lines[:TITLE_MATCH_LINE_LIMIT])
 
 
 def significant_title_tokens(text: str) -> list[str]:
