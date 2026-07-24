@@ -19,6 +19,7 @@ JSON_OUTPUT_FOLDER: str = "abstract_json"
 # File for storage
 OUTPUT_CSV: str = "anonymised_abstracts.csv"
 OUTPUT_JSON: str = "anonymised_abstracts.json"
+CSV_ENCODING: str = "utf-8-sig"
 PDF_SUFFIX: str = ".pdf"
 SUPPORTED_SUFFIXES: set[str] = {PDF_SUFFIX}
 CSV_FIELDNAMES: list[str] = [
@@ -235,7 +236,7 @@ def read_csv_rows(csv_path: Path) -> list[Row]:
     if not csv_path.exists():
         return []
     csv.field_size_limit(10_000_000)
-    with csv_path.open(newline="", encoding="utf-8") as f:
+    with csv_path.open(newline="", encoding=CSV_ENCODING) as f:
         reader = csv.DictReader(f)
         return [
             {field: row.get(field) or "" for field in CSV_FIELDNAMES}
@@ -321,7 +322,7 @@ def write_csv(rows: list[Row], csv_path: Path) -> None:
         None.
     """
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    with csv_path.open("w", newline="", encoding="utf-8") as f:
+    with csv_path.open("w", newline="", encoding=CSV_ENCODING) as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
         writer.writeheader()
         writer.writerows(rows)

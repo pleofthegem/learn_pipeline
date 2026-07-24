@@ -311,7 +311,9 @@ def test_write_csv_creates_parent_directory_and_writes_rows(tmp_path: Path) -> N
 
     write_csv(rows, csv_path)
 
-    with csv_path.open(newline="", encoding="utf-8") as f:
+    assert csv_path.read_bytes().startswith(b"\xef\xbb\xbf")
+
+    with csv_path.open(newline="", encoding="utf-8-sig") as f:
         assert list(csv.DictReader(f)) == rows
 
 
@@ -353,7 +355,7 @@ def test_anonymise_pdf_abstracts_is_public_pipeline_api(
     assert csv_path.exists()
     assert json_path.exists()
 
-    with csv_path.open(newline="", encoding="utf-8") as f:
+    with csv_path.open(newline="", encoding="utf-8-sig") as f:
         csv_reader = csv.DictReader(f)
         csv_rows = list(csv_reader)
     json_rows = json.loads(json_path.read_text(encoding="utf-8"))

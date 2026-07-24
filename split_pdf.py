@@ -18,6 +18,7 @@ SPLIT_FOLDER = "abstracts_split"
 OUTPUT_FOLDER = "abstracts_raw"
 METADATA_CSV = "split_abstracts.csv"
 METADATA_JSON = "split_abstracts.json"
+CSV_ENCODING = "utf-8-sig"
 PDF_SUFFIX = ".pdf"
 CODE_PATTERN = re.compile(r"^T\d+_[OP]\d+$")
 PRESENTATION_PATTERN = re.compile(
@@ -706,7 +707,7 @@ def write_metadata_csv(metadata: list[dict[str, object]], path: Path) -> None:
         None.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as file:
+    with path.open("w", newline="", encoding=CSV_ENCODING) as file:
         writer = csv.DictWriter(file, fieldnames=METADATA_FIELDS)
         writer.writeheader()
         writer.writerows(metadata)

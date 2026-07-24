@@ -59,7 +59,7 @@ def test_process_pdf_extracts_dasgupta_like_metadata(
         "Graywater can be reused safely after treatment."
     )
     assert row["abstract_keywords"] == (
-        "Graywater, Indicator organisms, Bacteriophages."
+        "Graywater, Indicator organisms, Bacteriophages"
     )
     assert row["additional_info"] == {
         "name": (
@@ -539,6 +539,9 @@ def test_standardise_keywords_joins_detected_separator_with_comma() -> None:
     assert standardise_keywords("water ; sanitation; reuse") == (
         "water, sanitation, reuse"
     )
+    assert standardise_keywords("Drinking water; Decentralization.") == (
+        "Drinking water, Decentralization"
+    )
 
 
 def test_extract_keywords_standardises_comma_separator() -> None:
@@ -564,7 +567,7 @@ def test_extract_keywords_includes_continuation_lines_until_next_heading() -> No
         "Safe drinking water is essential.",
     ]) == (
         "Chronic kidney disease of unknown etiology, Nanofiltration, "
-        "Drinking water, Decentralization."
+        "Drinking water, Decentralization"
     )
 
 
@@ -614,7 +617,9 @@ def test_write_csv_and_json_outputs_metadata(
     write_csv(rows, csv_path)
     write_json(rows, json_path)
 
-    with csv_path.open(newline="", encoding="utf-8") as f:
+    assert csv_path.read_bytes().startswith(b"\xef\xbb\xbf")
+
+    with csv_path.open(newline="", encoding="utf-8-sig") as f:
         csv_rows = list(csv.DictReader(f))
     with json_path.open(encoding="utf-8") as f:
         json_rows = json.load(f)

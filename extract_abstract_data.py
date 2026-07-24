@@ -33,6 +33,7 @@ CSV_OUTPUT_FOLDER: str = "abstract_csv"
 JSON_OUTPUT_FOLDER: str = "abstract_json"
 OUTPUT_CSV: str = "abstract_metadata.csv"
 OUTPUT_JSON: str = "abstract_metadata.json"
+CSV_ENCODING: str = "utf-8-sig"
 
 CSV_FIELDNAMES: list[str] = [
     "filename",
@@ -976,11 +977,20 @@ def standardise_keywords(keywords: str) -> str:
     elif "," in keywords:
         separator = ","
     else:
-        return keywords
+        return clean_keyword_part(keywords)
 
-    parts = [part.strip()
-             for part in keywords.split(separator) if part.strip()]
+    parts = [
+        clean_keyword_part(part)
+        for part in keywords.split(separator)
+        if clean_keyword_part(part)
+    ]
     return ", ".join(parts)
+
+
+def clean_keyword_part(keyword: str) -> str:
+    """Clean one keyword item after separator splitting."""
+    keyword = re.sub(r"\s+", " ", keyword)
+    return keyword.strip(" \t\r\n,;:.")
 
 
 def text_before_inline_section(text: str) -> str:
@@ -1188,7 +1198,7 @@ def write_csv(rows: list[Row], csv_path: Path) -> None:
         None.
     """
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    with csv_path.open("w", newline="", encoding="utf-8") as f:
+    with csv_path.open("w", newline="", encoding=CSV_ENCODING) as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
         writer.writeheader()
         for row in rows:
