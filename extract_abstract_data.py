@@ -69,6 +69,7 @@ PLACEHOLDER_LINES: set[str] = {
     "author name author name initials then surnames separated by commas appear here",
 }
 WATER_BOARD_HEADER = "national water supply and drainage board sri lanka"
+WATER_BOARD_TITLE_NOISE_LINES: set[str] = {"qs"}
 
 KEYWORDS_RE = re.compile(
     r"^\s*(?:keywords?|key\s+words?|index\s+terms)\s*[:.\-–—]?\s*(.*)$",
@@ -78,9 +79,17 @@ ABSTRACT_RE = re.compile(
     r"^\s*abstract(?:\s+of\s+the\s+project)?\s*[:.\-–—]?\s*(.*)$",
     re.IGNORECASE,
 )
+BRACKETED_TITLE_NOISE_RE = re.compile(r"^\s*[\(\[\{][^\)\]\}]+[\)\]\}]\s*$")
 AUTHOR_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'.-]*")
 AUTHOR_INITIALS_ONLY_RE = re.compile(r"(?:[A-Z]\.?){1,10}")
-AUTHOR_MARKER_SYMBOL_RE = re.compile(r"[*†‡§]")
+AUTHOR_MARKER_CHARS = "*†‡§"
+AUTHOR_MARKER_SUFFIX_RE = re.compile(
+    rf"(?<=[A-Za-z])\s*"
+    rf"(?:\d+(?:\s*,\s*\d+)*(?:\s*,\s*)?)?"
+    rf"[{re.escape(AUTHOR_MARKER_CHARS)}]+"
+    rf"(?=\s*(?:,|\.|$))"
+)
+AUTHOR_MARKER_SYMBOL_RE = re.compile(rf"[{re.escape(AUTHOR_MARKER_CHARS)}]+")
 AFFILIATION_KEYWORDS: set[str] = {
     "affiliation",
     "board",
@@ -117,6 +126,13 @@ MONTH_RE = re.compile(
 YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 PLACE_LABEL_RE = re.compile(
     r"^\s*(?:venue|location|place|host city)\s*[:.\-–—]\s*(.+)$",
+    re.IGNORECASE,
+)
+INLINE_SECTION_RE = re.compile(
+    r"\b(?:"
+    r"abstract|background|introduction|methods?|methodology|results|"
+    r"discussion|conclusions?|references"
+    r")\s*[:.\-–—]",
     re.IGNORECASE,
 )
 
@@ -285,6 +301,16 @@ def is_placeholder_line(line: str) -> bool:
     return comparable_text(line) in PLACEHOLDER_LINES
 
 
+def is_bracketed_title_noise_line(line: str) -> bool:
+    """Check whether a title-range line is only bracketed noise text."""
+    return bool(BRACKETED_TITLE_NOISE_RE.fullmatch(line))
+
+
+def is_title_noise_line(line: str) -> bool:
+    """Check whether a line should be ignored while extracting titles."""
+    return is_placeholder_line(line) or is_bracketed_title_noise_line(line)
+
+
 def is_water_board_header_line(line: str) -> bool:
     """Check whether a line is the Water Board abstract header."""
     return comparable_text(line) == WATER_BOARD_HEADER
@@ -300,7 +326,8 @@ def is_ignored_water_board_title_line(line: str) -> bool:
     return (
         is_water_board_header_line(line)
         or is_page_number_line(line)
-        or is_placeholder_line(line)
+        or is_title_noise_line(line)
+        or comparable_text(line) in WATER_BOARD_TITLE_NOISE_LINES
     )
 
 
@@ -356,7 +383,7 @@ def find_title_from_filename(
     expected = comparable_text(hint)
     candidates = [
         (index, line) for index, line in pre_section_lines(lines)
-        if not is_contact_line(line.text) and not is_placeholder_line(line.text)
+        if not is_contact_line(line.text) and not is_title_noise_line(line.text)
     ]
     best_score = 0.0
     best_title = ""
@@ -393,7 +420,7 @@ def find_title_from_layout(lines: list[TextLine]) -> tuple[str, int]:
     """
     candidates = [
         (index, line) for index, line in pre_section_lines(lines)
-        if not is_contact_line(line.text) and not is_placeholder_line(line.text)
+        if not is_contact_line(line.text) and not is_title_noise_line(line.text)
     ]
     if not candidates:
         return "", -1
@@ -464,7 +491,8 @@ def clean_author_line(line: str) -> str:
 
 def clean_author_name(name: str) -> str:
     """Remove footnote markers from one author name."""
-    name = re.sub(r"[*†‡§]+", "", name)
+    name = AUTHOR_MARKER_SUFFIX_RE.sub("", name)
+    name = AUTHOR_MARKER_SYMBOL_RE.sub("", name)
     name = re.sub(r"\d+(?=\s|,|\.|$)", "", name)
     name = re.sub(r"\s+", " ", name)
     return name.strip(" .,;")
@@ -538,7 +566,8 @@ def is_probable_author_line(line: str) -> bool:
         or is_affiliation_text(line)
     ):
         return False
-    if "," not in line and not AUTHOR_MARKER_SYMBOL_RE.search(line):
+    has_marker_shape = has_author_marker_shape(line)
+    if "," not in line and not has_marker_shape:
         return False
 
     probable_names = [
@@ -548,7 +577,7 @@ def is_probable_author_line(line: str) -> bool:
     if len(probable_names) >= 2:
         return True
 
-    return bool(AUTHOR_MARKER_SYMBOL_RE.search(line)) and len(probable_names) == 1
+    return has_marker_shape and len(probable_names) == 1
 
 
 def is_author_fragment_line(line: str) -> bool:
@@ -565,14 +594,19 @@ def is_author_fragment_line(line: str) -> bool:
     return (
         is_probable_author_line(line)
         or is_initials_only(line)
-        or bool(AUTHOR_MARKER_SYMBOL_RE.search(line))
+        or has_author_marker_shape(line)
     )
 
 
+def has_author_marker_shape(line: str) -> bool:
+    """Check whether text contains a name-style author marker suffix."""
+    return bool(AUTHOR_MARKER_SUFFIX_RE.search(line))
+
+
 def is_author_marker_fragment_line(line: str) -> bool:
-    """Check whether a line has author marker symbols and can belong to authors."""
+    """Check whether a line has a name-style author marker suffix."""
     return (
-        bool(AUTHOR_MARKER_SYMBOL_RE.search(line))
+        has_author_marker_shape(line)
         and not is_contact_line(line)
         and not is_placeholder_line(line)
         and not is_section_heading(line)
@@ -584,14 +618,20 @@ def is_author_marker_fragment_line(line: str) -> bool:
 def find_author_start_index(
     lines: list[TextLine],
     limit: int,
+    min_index: int = 0,
 ) -> int | None:
     """Find where the pre-section author block starts."""
-    for index, line in enumerate(lines[:limit]):
+    marker_start_index = find_author_marker_start_index(
+        lines,
+        limit,
+        min_index,
+    )
+    if marker_start_index is not None:
+        return marker_start_index
+
+    for index, line in enumerate(lines[min_index:limit], start=min_index):
         text = line.text
-        if not (
-            is_probable_author_line(text)
-            or is_author_marker_fragment_line(text)
-        ):
+        if not is_probable_author_line(text):
             continue
 
         start_index = index
@@ -603,6 +643,40 @@ def find_author_start_index(
         return start_index
 
     return None
+
+
+def find_author_marker_start_index(
+    lines: list[TextLine],
+    limit: int,
+    min_index: int = 0,
+) -> int | None:
+    """Find the first author block line with explicit author markers."""
+    for index, line in enumerate(lines[min_index:limit], start=min_index):
+        if not is_author_marker_start_candidate(lines, index):
+            continue
+
+        start_index = index
+        while (
+            start_index > 0
+            and is_initials_only(lines[start_index - 1].text)
+        ):
+            start_index -= 1
+        return start_index
+
+    return None
+
+
+def is_author_marker_start_candidate(
+    lines: list[TextLine],
+    index: int,
+) -> bool:
+    """Check whether one line can start a marker-shaped author block."""
+    text = lines[index].text
+    if not is_author_marker_fragment_line(text):
+        return False
+    if is_probable_author_line(text):
+        return True
+    return index > 0 and is_initials_only(lines[index - 1].text)
 
 
 def extract_title(lines: list[TextLine], path: Path) -> tuple[str, int]:
@@ -641,7 +715,11 @@ def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
     section_index = first_section_index(texts)
     limit = section_index if section_index is not None else len(lines)
     author_lines: list[str] = []
-    start = find_author_start_index(lines, limit)
+    start = find_author_start_index(
+        lines,
+        limit,
+        min_index=max(title_end_index + 1, 0),
+    )
     if start is None:
         start = max(title_end_index + 1, 0)
 
@@ -650,7 +728,11 @@ def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
         if is_section_heading(text):
             break
 
-        if is_author_fragment_line(text):
+        if is_author_fragment_line(text) or (
+            author_lines
+            and author_lines[-1].strip().lower().endswith(" and")
+            and is_probable_author_name(clean_author_line(text))
+        ):
             author_lines.append(text)
             continue
         if author_lines:
@@ -901,27 +983,72 @@ def standardise_keywords(keywords: str) -> str:
     return ", ".join(parts)
 
 
-def extract_keywords(lines: list[str]) -> str:
-    """Extract keywords from a `Keywords:` or `Key words:` line.
+def text_before_inline_section(text: str) -> str:
+    """Return text before an inline section heading, if one is present."""
+    match = INLINE_SECTION_RE.search(text)
+    if not match:
+        return text.strip()
+    return text[:match.start()].strip()
+
+
+def is_keyword_continuation_text(text: str) -> bool:
+    """Check whether a line looks like wrapped keyword text."""
+    text = text.strip()
+    if not text:
+        return False
+
+    words = re.findall(r"[A-Za-z0-9]+", text)
+    if len(words) <= 8:
+        return True
+    if ";" in text and len(words) <= 14:
+        return True
+    return False
+
+
+def extract_keywords_from_text_lines(lines: list[TextLine]) -> str:
+    """Extract keywords from a `Keywords:` or `Key words:` block.
 
     Args:
-        lines: Cleaned PDF text lines.
+        lines: Text lines extracted from a PDF.
 
     Returns:
-        str: Keyword text after the heading, or an empty string when no keyword
-            line is found.
+        str: Keyword text after the heading, including continuation lines up
+            to the next section heading. Returns an empty string when no
+            keyword block is found.
     """
     for index, line in enumerate(lines):
-        match = KEYWORDS_RE.match(line)
+        match = KEYWORDS_RE.match(line.text)
         if not match:
             continue
 
-        keywords = match.group(1).strip()
-        if keywords:
-            return standardise_keywords(keywords)
-        if index + 1 < len(lines):
-            return standardise_keywords(lines[index + 1])
+        keyword_lines: list[str] = []
+        first_line = text_before_inline_section(match.group(1))
+        if first_line:
+            keyword_lines.append(first_line)
+
+        for continuation in lines[index + 1:]:
+            text = continuation.text.strip()
+            if is_section_heading(text):
+                break
+            if continuation.size > line.size + 0.5:
+                break
+
+            text = text_before_inline_section(text)
+            if not text:
+                break
+            if not is_keyword_continuation_text(text):
+                break
+            keyword_lines.append(text)
+
+        return standardise_keywords(" ".join(keyword_lines))
     return ""
+
+
+def extract_keywords(lines: list[str]) -> str:
+    """Extract keywords from cleaned PDF text lines."""
+    return extract_keywords_from_text_lines([
+        TextLine(text=line, size=0.0) for line in lines
+    ])
 
 
 def abstract_start(lines: list[str]) -> tuple[int, str]:
@@ -1003,7 +1130,7 @@ def process_pdf(
         "abstract_title": title,
         "abstract_authors": extract_authors(text_lines, title_end_index),
         "abstract_description": extract_description(lines),
-        "abstract_keywords": extract_keywords(lines),
+        "abstract_keywords": extract_keywords_from_text_lines(text_lines),
         "additional_info": extract_additional_info(
             text_lines,
             title_end_index,

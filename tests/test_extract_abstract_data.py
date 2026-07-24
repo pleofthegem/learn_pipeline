@@ -12,6 +12,7 @@ from extract_abstract_data import (
     extract_abstract_data,
     extract_abstract_metadata,
     extract_keywords,
+    is_author_marker_fragment_line,
     pdf_input_files,
     process_pdf,
     standardise_keywords,
@@ -243,6 +244,55 @@ def test_process_pdf_ignores_template_placeholder_title(
     assert row["abstract_authors"] == "Md Tashdedul Haque, Lee -Hyung Kim"
 
 
+def test_process_pdf_ignores_bracketed_title_noise_line(
+    tmp_path: Path,
+) -> None:
+    """Check that hidden bracket-only title noise is ignored."""
+    path = tmp_path / "Water Board 2026_P05.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    y = 72
+    for text, size in [
+        ("National Water Supply and Drainage Board, Sri Lanka.", 8),
+        ("202", 8),
+        ("(Timothy J. Entwisle, no date)", 16),
+        ("This is a Sample Abstract Title", 16),
+        (
+            "Author Name*, Author Name**, initials then surnames, "
+            "separated by commas, appear here",
+            10,
+        ),
+        ("Degradation of organic textile dye using Graphene Oxide and", 16),
+        ("Graphitic Carbon Nitride composite (GO/g-C3N4) as a", 16),
+        ("Photocatalyst", 16),
+        (
+            "K.A.C.P. Abeyrathna*, U. A. D Jayasinghe** "
+            "and R. A. Maithreepala***",
+            10,
+        ),
+        (
+            "Keywords: Graphene Oxide; Graphitic Carbon Nitride; "
+            "Textile Dye; Photodegradation",
+            12,
+        ),
+        ("Abstract: This study reports photocatalytic degradation.", 12),
+    ]:
+        page.insert_text((72, y), text, fontsize=size)
+        y += size + 8
+    pdf.save(path)
+    pdf.close()
+
+    row = process_pdf(path)
+
+    assert row["abstract_title"] == (
+        "Degradation of organic textile dye using Graphene Oxide and "
+        "Graphitic Carbon Nitride composite (GO/g-C3N4) as a Photocatalyst"
+    )
+    assert row["abstract_authors"] == (
+        "K.A.C.P. Abeyrathna, U. A. D Jayasinghe, R. A. Maithreepala"
+    )
+
+
 def test_process_pdf_extracts_wrapped_comma_separated_authors(
     tmp_path: Path,
 ) -> None:
@@ -318,6 +368,142 @@ def test_process_pdf_extracts_water_board_title_until_author_line(
     )
 
 
+def test_process_pdf_handles_abstract_before_keywords_layout(
+    tmp_path: Path,
+) -> None:
+    """Check TS-style numbered authors and post-abstract keywords."""
+    path = tmp_path / "TS 1.01-P1-Asef Redwan-6978028.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    y = 72
+    for text, size in [
+        ("Predicting Effects of Groundwater Elements in Arsenic Mobilization", 14),
+        ("using Machine Learning Algorithms: BDT, LR and RF", 14),
+        (
+            "Tasnia Ashrafi Heya1, Asef Mohammad Redwan2, "
+            "Tahsin Habib2, Shubhra Bhattacharjee3 and",
+            10.5,
+        ),
+        ("Md Shakil Kashem4", 10.5),
+        ("1University of Dayton, Dayton, Ohio", 10.5),
+        (
+            "Abstract: Arsenic contamination in groundwater is a global "
+            "public health concern.",
+            10,
+        ),
+        ("This study presents a predictive analysis of arsenic levels.", 10),
+        (
+            "Keywords: Arsenic contamination; machine learning; "
+            "spatial distribution",
+            10,
+        ),
+        ("Arsenic, a carcinogenic metalloid found in sediments, poses a", 12),
+        ("risk to people worldwide.", 12),
+    ]:
+        page.insert_text((72, y), text, fontsize=size)
+        y += size + 8
+    pdf.save(path)
+    pdf.close()
+
+    row = process_pdf(path)
+
+    assert row["abstract_title"] == (
+        "Predicting Effects of Groundwater Elements in Arsenic Mobilization "
+        "using Machine Learning Algorithms: BDT, LR and RF"
+    )
+    assert row["abstract_authors"] == (
+        "Tasnia Ashrafi Heya, Asef Mohammad Redwan, Tahsin Habib, "
+        "Shubhra Bhattacharjee, Md Shakil Kashem"
+    )
+    assert row["abstract_keywords"] == (
+        "Arsenic contamination, machine learning, spatial distribution"
+    )
+
+
+def test_process_pdf_keeps_comma_title_line_before_marked_author(
+    tmp_path: Path,
+) -> None:
+    """Check that comma-containing title lines are not treated as authors."""
+    path = tmp_path / "Water Board 2026_O16.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    y = 72
+    for text, size in [
+        ("National Water Supply and Drainage Board, Sri Lanka.", 8),
+        ("38", 8),
+        ("Urban Stormwater Disinfection, Storage Quality Change and", 16),
+        ("Influence on Microalgae: Implications for Reuse Safety", 16),
+        ("An Liu*", 10),
+        (
+            "*College of Chemistry and Environmental Engineering, "
+            "Shenzhen University",
+            11,
+        ),
+        (
+            "Keywords: Stormwater disinfection; Stormwater storage; "
+            "Stormwater reuse",
+            12,
+        ),
+        ("Abstract: Stormwater reuse requires disinfection.", 12),
+    ]:
+        page.insert_text((72, y), text, fontsize=size)
+        y += size + 8
+    pdf.save(path)
+    pdf.close()
+
+    row = process_pdf(path)
+
+    assert row["abstract_title"] == (
+        "Urban Stormwater Disinfection, Storage Quality Change and "
+        "Influence on Microalgae: Implications for Reuse Safety"
+    )
+    assert row["abstract_authors"] == "An Liu"
+
+
+def test_process_pdf_removes_water_board_qs_noise_and_marker_commas(
+    tmp_path: Path,
+) -> None:
+    """Check that floating Water Board noise and marker commas are ignored."""
+    path = tmp_path / "Water Board 2026_O08.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page()
+    y = 72
+    for text, size in [
+        ("National Water Supply and Drainage Board, Sri Lanka.", 8),
+        ("18", 8),
+        ("qs", 16),
+        ("Spatiotemporal Dynamics of Dissolved Organic Matter (DOM)", 16),
+        ("in Beira Lake, Sri Lanka", 16),
+        (
+            "S. Prasad1,2,3,*, Wei Yuansong1,2,3,**, "
+            "Tushara Chaminda4,***, M.",
+            10,
+        ),
+        ("Makehelwala7,**********", 10),
+        ("1State Key Laboratory of Regional Environment and Sustainability", 11),
+        (
+            "Keywords: DOM; Urban Lakes; Beira Lake; "
+            "Risk-based Monitoring",
+            12,
+        ),
+        ("Abstract: This study analyzes DOM.", 12),
+    ]:
+        page.insert_text((72, y), text, fontsize=size)
+        y += size + 8
+    pdf.save(path)
+    pdf.close()
+
+    row = process_pdf(path)
+
+    assert row["abstract_title"] == (
+        "Spatiotemporal Dynamics of Dissolved Organic Matter (DOM) "
+        "in Beira Lake, Sri Lanka"
+    )
+    assert row["abstract_authors"] == (
+        "S. Prasad, Wei Yuansong, Tushara Chaminda, M. Makehelwala"
+    )
+
+
 def test_process_pdf_rejects_non_pdf_file(tmp_path: Path) -> None:
     """Check that non-PDF files are rejected when processed directly."""
     path = tmp_path / "abstract.txt"
@@ -337,6 +523,14 @@ def test_clean_author_line_removes_marker_only_commas() -> None:
     )
 
 
+def test_author_marker_detection_matches_suffix_shape() -> None:
+    """Check that author markers are detected by suffix shape."""
+    assert is_author_marker_fragment_line("S. Prasad1,2,3,*")
+    assert is_author_marker_fragment_line("Makehelwala7,**********")
+    assert not is_author_marker_fragment_line("*College of Chemistry")
+    assert not is_author_marker_fragment_line("Risk * management title")
+
+
 def test_standardise_keywords_joins_detected_separator_with_comma() -> None:
     """Check that keyword separators are normalised to commas."""
     assert standardise_keywords("water, sanitation, reuse") == (
@@ -353,6 +547,35 @@ def test_extract_keywords_standardises_comma_separator() -> None:
         "Abstract: sample",
         "Keywords: water, sanitation, reuse",
     ]) == "water, sanitation, reuse"
+
+
+def test_extract_keywords_includes_continuation_lines_until_next_heading() -> None:
+    """Check that wrapped keyword lines are joined before standardising."""
+    assert extract_keywords([
+        "Keywords: Hydrochar; Phytotoxicity; Seed",
+        "Germination",
+        "Abstract: Hydrochar produced via hydrothermal carbonization.",
+    ]) == "Hydrochar, Phytotoxicity, Seed Germination"
+
+    assert extract_keywords([
+        "Keywords: Chronic kidney disease of unknown etiology; Nanofiltration; Drinking",
+        "water; Decentralization.",
+        "Introduction:",
+        "Safe drinking water is essential.",
+    ]) == (
+        "Chronic kidney disease of unknown etiology, Nanofiltration, "
+        "Drinking water, Decentralization."
+    )
+
+
+def test_extract_keywords_stops_at_inline_section_heading() -> None:
+    """Check that same-line section text after keywords is not included."""
+    assert extract_keywords([
+        (
+            "Keywords: arsenic; machine learning Abstract: This should not "
+            "be treated as a keyword."
+        ),
+    ]) == "arsenic, machine learning"
 
 
 def test_pdf_input_files_creates_missing_folder(tmp_path: Path) -> None:
