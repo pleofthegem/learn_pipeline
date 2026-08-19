@@ -3,12 +3,14 @@
 This repo processes IWA Learn abstract files into cleaned PDFs, extracted
 metadata, and anonymised text exports.
 
+This assumes that you already have git to clone the repo, and python installed to run the program.
+
 ## Requirements
 
 - Python 3.10 or later
 - LibreOffice, for converting `.doc` and `.docx` files to PDF
 
-On Debian or Ubuntu, install LibreOffice with:
+On Unix like OS, install LibreOffice with:
 
 ```bash
 sudo apt install libreoffice
