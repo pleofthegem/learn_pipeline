@@ -11,6 +11,7 @@ def test_clear_outputs_removes_only_generated_output_contents(
         target = tmp_path / folder
         nested = target / "nested"
         nested.mkdir(parents=True)
+        (target / ".gitkeep").write_text("", encoding="utf-8")
         (target / "output.txt").write_text("old output", encoding="utf-8")
         (nested / "nested.txt").write_text("old nested output", encoding="utf-8")
 
@@ -24,7 +25,7 @@ def test_clear_outputs_removes_only_generated_output_contents(
     for folder in OUTPUT_FOLDERS:
         target = tmp_path / folder
         assert target.exists()
-        assert list(target.iterdir()) == []
+        assert [path.name for path in target.iterdir()] == [".gitkeep"]
     assert (input_folder / "source.pdf").exists()
 
 

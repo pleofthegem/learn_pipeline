@@ -8,8 +8,9 @@ from pathlib import Path
 
 import fitz
 
-AGGREGATED_FOLDER: str = "abstracts_aggregated"
-PDF_OUTPUT_FOLDER: str = "abstracts_raw"
+OUTPUT_ROOT: str = "output"
+AGGREGATED_FOLDER: str = f"{OUTPUT_ROOT}/abstracts_aggregated"
+PDF_OUTPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstracts_raw"
 OFFICE_SUFFIXES: set[str] = {".doc", ".docx"}
 SUPPORTED_SUFFIXES: set[str] = {'.pdf', *OFFICE_SUFFIXES}
 POWERPOINT_PDF_MARKERS: tuple[str, ...] = ("pptx", "ppt", "presentation")

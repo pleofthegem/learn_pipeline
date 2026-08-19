@@ -28,9 +28,10 @@ class TextLine:
     size: float
 
 
-INPUT_FOLDER: str = "abstracts_raw"
-CSV_OUTPUT_FOLDER: str = "abstract_csv"
-JSON_OUTPUT_FOLDER: str = "abstract_json"
+OUTPUT_ROOT: str = "output"
+INPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstracts_raw"
+CSV_OUTPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstract_csv"
+JSON_OUTPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstract_json"
 OUTPUT_CSV: str = "abstract_metadata.csv"
 OUTPUT_JSON: str = "abstract_metadata.json"
 CSV_ENCODING: str = "utf-8-sig"

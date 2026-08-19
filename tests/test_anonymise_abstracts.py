@@ -385,7 +385,17 @@ def test_main_creates_missing_folders_for_empty_run(
 
     anonymise_abstracts.main()
 
-    assert (tmp_path / "abstracts_raw").exists()
-    assert (tmp_path / "abstracts_clean").exists()
-    assert (tmp_path / "abstract_csv" / "anonymised_abstracts.csv").exists()
-    assert (tmp_path / "abstract_json" / "anonymised_abstracts.json").exists()
+    assert (tmp_path / "output" / "abstracts_raw").exists()
+    assert (tmp_path / "output" / "abstracts_clean").exists()
+    assert (
+        tmp_path
+        / "output"
+        / "abstract_csv"
+        / "anonymised_abstracts.csv"
+    ).exists()
+    assert (
+        tmp_path
+        / "output"
+        / "abstract_json"
+        / "anonymised_abstracts.json"
+    ).exists()

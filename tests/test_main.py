@@ -10,14 +10,15 @@ def test_run_pipeline_calls_each_module_api_in_order(
     """Check that the top-level pipeline delegates to module APIs in order."""
     calls: list[str] = []
     input_folder = tmp_path / "input"
-    aggregate_folder = tmp_path / "abstracts_aggregated"
-    raw_folder = tmp_path / "abstracts_raw"
-    split_folder = tmp_path / "abstracts_split"
-    clean_folder = tmp_path / "abstracts_clean"
-    extract_csv_path = tmp_path / "abstract_csv" / "abstract_metadata.csv"
-    extract_json_path = tmp_path / "abstract_json" / "abstract_metadata.json"
-    anonymise_csv_path = tmp_path / "abstract_csv" / "anonymised_abstracts.csv"
-    anonymise_json_path = tmp_path / "abstract_json" / "anonymised_abstracts.json"
+    output_root = tmp_path / "output"
+    aggregate_folder = output_root / "abstracts_aggregated"
+    raw_folder = output_root / "abstracts_raw"
+    split_folder = output_root / "abstracts_split"
+    clean_folder = output_root / "abstracts_clean"
+    extract_csv_path = output_root / "abstract_csv" / "abstract_metadata.csv"
+    extract_json_path = output_root / "abstract_json" / "abstract_metadata.json"
+    anonymise_csv_path = output_root / "abstract_csv" / "anonymised_abstracts.csv"
+    anonymise_json_path = output_root / "abstract_json" / "anonymised_abstracts.json"
 
     def fake_clear_folders(folders: list[Path]) -> dict[str, int]:
         calls.append("clear")

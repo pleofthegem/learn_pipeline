@@ -10,15 +10,17 @@ from pathlib import Path
 
 import fitz
 
+OUTPUT_ROOT = "output"
 # Default folder containing PDFs to check for combined abstract e-books.
-INPUT_FOLDER = "abstracts_raw"
+INPUT_FOLDER = f"{OUTPUT_ROOT}/abstracts_raw"
 # Staging folder for human inspection.
-SPLIT_FOLDER = "abstracts_split"
+SPLIT_FOLDER = f"{OUTPUT_ROOT}/abstracts_split"
 # Shared general input folder for other scripts like anonymise_abstracts.py and extract_abstract_metadata.py
-OUTPUT_FOLDER = "abstracts_raw"
+OUTPUT_FOLDER = f"{OUTPUT_ROOT}/abstracts_raw"
 METADATA_CSV = "split_abstracts.csv"
 METADATA_JSON = "split_abstracts.json"
 CSV_ENCODING = "utf-8-sig"
+PRESERVED_NAMES = {".gitkeep"}
 PDF_SUFFIX = ".pdf"
 CODE_PATTERN = re.compile(r"^T\d+_[OP]\d+$")
 PRESENTATION_PATTERN = re.compile(
@@ -665,6 +667,8 @@ def clean_folder(folder: Path) -> None:
         None.
     """
     for path in folder.iterdir():
+        if path.name in PRESERVED_NAMES:
+            continue
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path)
             continue

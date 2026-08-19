@@ -299,11 +299,11 @@ def test_convert_inputs_to_pdfs_is_public_pipeline_api(
     )
 
 
-def test_main_converts_to_abstracts_raw(
+def test_main_converts_to_output_abstracts_raw(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Check that CLI flow always writes converted PDFs to abstracts_raw."""
+    """Check that CLI flow writes converted PDFs to the default raw folder."""
     input_folder = tmp_path / "input"
     input_folder.mkdir()
 

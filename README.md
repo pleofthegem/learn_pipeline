@@ -72,21 +72,22 @@ python main.py \
 Default inputs:
 
 - `input/` for source files to aggregate and convert
-- `abstracts_raw/` for PDFs produced by conversion and checked for splitting
+- `output/abstracts_raw/` for PDFs produced by conversion and checked for
+  splitting
 
 Main outputs:
 
-- `abstracts_raw/`
-- `abstract_csv/abstract_metadata.csv`
-- `abstract_json/abstract_metadata.json`
-- `abstracts_clean/`
-- `abstract_csv/anonymised_abstracts.csv`
-- `abstract_json/anonymised_abstracts.json`
+- `output/abstracts_raw/`
+- `output/abstract_csv/abstract_metadata.csv`
+- `output/abstract_json/abstract_metadata.json`
+- `output/abstracts_clean/`
+- `output/abstract_csv/anonymised_abstracts.csv`
+- `output/abstract_json/anonymised_abstracts.json`
 
 ### Convert Files to PDF: `convert_to_pdf.py`
 
 Aggregates supported files from an input folder and converts or copies them into
-`abstracts_raw/`.
+`output/abstracts_raw/`.
 
 ```bash
 python convert_to_pdf.py input
@@ -100,17 +101,18 @@ Supported input types:
 
 Presentations are not part of the automated abstract pipeline. `.ppt` and
 `.pptx` files are ignored, and PDFs with path or filename text such as `ppt`,
-`pptx`, or `presentation` are skipped before they reach `abstracts_raw/`.
+`pptx`, or `presentation` are skipped before they reach
+`output/abstracts_raw/`.
 Password-protected PDFs are also skipped.
 
 Outputs:
 
-- `abstracts_aggregated/` as a staging folder
-- `abstracts_raw/` for generated or copied PDFs
+- `output/abstracts_aggregated/` as a staging folder
+- `output/abstracts_raw/` for generated or copied PDFs
 
 ### Split Combined PDFs: `split_pdf.py`
 
-Checks PDFs in `abstracts_raw/` and splits only the ones that match the
+Checks PDFs in `output/abstracts_raw/` and splits only the ones that match the
 expected combined abstract e-book format.
 
 ```bash
@@ -125,15 +127,15 @@ python split_pdf.py custom_pdf_folder
 
 Outputs:
 
-- `abstracts_split/` as a staging folder
-- `abstracts_split/split_abstracts.csv`
-- `abstracts_split/split_abstracts.json`
-- `abstracts_raw/` for the final split PDFs
+- `output/abstracts_split/` as a staging folder
+- `output/abstracts_split/split_abstracts.csv`
+- `output/abstracts_split/split_abstracts.json`
+- `output/abstracts_raw/` for the final split PDFs
 
 ### Extract Abstract Metadata: `extract_abstract_data.py`
 
-Reads PDFs from `abstracts_raw/` and extracts title, authors, abstract text,
-keywords, and optional conference metadata.
+Reads PDFs from `output/abstracts_raw/` and extracts title, authors, abstract
+text, keywords, and optional conference metadata.
 
 ```bash
 python extract_abstract_data.py
@@ -142,21 +144,21 @@ python extract_abstract_data.py
 To read from a custom folder:
 
 ```bash
-python extract_abstract_data.py abstracts_raw
+python extract_abstract_data.py output/abstracts_raw
 ```
 
 Use optional defaults when conference metadata is known in advance:
 
 ```bash
-python extract_abstract_data.py abstracts_raw \
+python extract_abstract_data.py output/abstracts_raw \
   --conference-name "IWA Example Conference" \
   --conference-place "Example City, Example Country"
 ```
 
 Outputs:
 
-- `abstract_csv/abstract_metadata.csv`
-- `abstract_json/abstract_metadata.json`
+- `output/abstract_csv/abstract_metadata.csv`
+- `output/abstract_json/abstract_metadata.json`
 
 Each row includes `additional_info` with this shape:
 
@@ -172,7 +174,7 @@ header. If no conference metadata can be found and no defaults are supplied,
 
 Extracts text from PDFs and removes supported personal/contact identifiers.
 
-Process every PDF in `abstracts_raw/`:
+Process every PDF in `output/abstracts_raw/`:
 
 ```bash
 python anonymise_abstracts.py
@@ -186,19 +188,21 @@ python anonymise_abstracts.py abstract_001.pdf
 
 Outputs:
 
-- `abstracts_clean/` for cleaned text files
-- `abstract_csv/anonymised_abstracts.csv`
-- `abstract_json/anonymised_abstracts.json`
+- `output/abstracts_clean/` for cleaned text files
+- `output/abstract_csv/anonymised_abstracts.csv`
+- `output/abstract_json/anonymised_abstracts.json`
 
 ## Pipeline Logic
 
 The full pipeline:
 
 1. Aggregates supported source files from `input/`.
-2. Converts Office files to PDF and copies existing PDFs into `abstracts_raw/`.
-3. Checks `abstracts_raw/` for combined abstract e-books and splits matches.
+2. Converts Office files to PDF and copies existing PDFs into
+   `output/abstracts_raw/`.
+3. Checks `output/abstracts_raw/` for combined abstract e-books and splits
+   matches.
 4. Extracts title, authors, description, keywords, and conference metadata.
-5. Anonymises PDF text from `abstracts_raw/`.
+5. Anonymises PDF text from `output/abstracts_raw/`.
 
 ## Repo Structure
 
@@ -206,19 +210,21 @@ Input folders:
 
 - `input/`: raw source files for conversion. This is mainly for files supplied
   before PDF-only input is enforced.
-- `abstracts_raw/`: PDFs produced by conversion. This can contain normal PDFs
-  and combined e-book PDFs; the splitter ignores PDFs that do not match the
-  expected combined format.
 
 Output folders:
 
-- `abstracts_raw/`: PDFs produced by conversion and split PDFs used by later
-  stages.
-- `abstracts_aggregated/`: staging folder used by `convert_to_pdf.py`.
-- `abstracts_split/`: staging folder and metadata output used by `split_pdf.py`.
-- `abstract_csv/`: CSV exports from metadata extraction and anonymisation.
-- `abstract_json/`: JSON exports from metadata extraction and anonymisation.
-- `abstracts_clean/`: cleaned text files from anonymisation.
+- `output/`: master folder for generated pipeline outputs.
+- `output/abstracts_raw/`: PDFs produced by conversion and split PDFs used by
+  later stages. This can contain normal PDFs and combined e-book PDFs; the
+  splitter ignores PDFs that do not match the expected combined format.
+- `output/abstracts_aggregated/`: staging folder used by `convert_to_pdf.py`.
+- `output/abstracts_split/`: staging folder and metadata output used by
+  `split_pdf.py`.
+- `output/abstract_csv/`: CSV exports from metadata extraction and
+  anonymisation.
+- `output/abstract_json/`: JSON exports from metadata extraction and
+  anonymisation.
+- `output/abstracts_clean/`: cleaned text files from anonymisation.
 
 ## Clear Generated Outputs
 
@@ -228,9 +234,10 @@ To start a fresh run with the same input files, clear generated outputs:
 python clear_outputs.py
 ```
 
-This empties `abstract_csv/`, `abstract_json/`, `abstracts_aggregated/`,
-`abstracts_clean/`, `abstracts_raw/`, and `abstracts_split/`. It leaves
-`input/` untouched.
+This empties `output/abstract_csv/`, `output/abstract_json/`,
+`output/abstracts_aggregated/`, `output/abstracts_clean/`,
+`output/abstracts_raw/`, and `output/abstracts_split/`. It leaves `input/`
+untouched.
 
 ## Tests
 

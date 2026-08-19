@@ -3,14 +3,16 @@
 import shutil
 from pathlib import Path
 
+OUTPUT_ROOT = Path("output")
 OUTPUT_FOLDERS = [
-    Path("abstract_csv"),
-    Path("abstract_json"),
-    Path("abstracts_aggregated"),
-    Path("abstracts_clean"),
-    Path("abstracts_raw"),
-    Path("abstracts_split"),
+    OUTPUT_ROOT / "abstract_csv",
+    OUTPUT_ROOT / "abstract_json",
+    OUTPUT_ROOT / "abstracts_aggregated",
+    OUTPUT_ROOT / "abstracts_clean",
+    OUTPUT_ROOT / "abstracts_raw",
+    OUTPUT_ROOT / "abstracts_split",
 ]
+PRESERVED_NAMES = {".gitkeep"}
 
 
 def clear_folder(folder: Path) -> int:
@@ -19,6 +21,8 @@ def clear_folder(folder: Path) -> int:
     removed_count = 0
 
     for path in folder.iterdir():
+        if path.name in PRESERVED_NAMES:
+            continue
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path)
         else:

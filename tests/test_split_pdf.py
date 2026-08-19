@@ -8,6 +8,7 @@ from split_pdf import (
     INPUT_FOLDER,
     METADATA_CSV,
     METADATA_JSON,
+    clean_folder,
     find_title_page,
     find_toc_page_range,
     is_combined_pdf,
@@ -557,6 +558,18 @@ def test_split_combined_pdfs_creates_missing_folders_for_empty_run(
     assert staging_folder.exists()
     assert (staging_folder / METADATA_CSV).exists()
     assert (staging_folder / METADATA_JSON).exists()
+
+
+def test_clean_folder_preserves_gitkeep(tmp_path: Path) -> None:
+    """Check that staging cleanup keeps tracked placeholder files."""
+    folder = tmp_path / "stage"
+    folder.mkdir()
+    (folder / ".gitkeep").write_text("", encoding="utf-8")
+    (folder / "old.pdf").write_text("old", encoding="utf-8")
+
+    clean_folder(folder)
+
+    assert [path.name for path in folder.iterdir()] == [".gitkeep"]
 
 
 def test_split_folder_rejects_staging_folder_as_output_folder(

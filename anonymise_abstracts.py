@@ -12,10 +12,11 @@ import fitz  # PyMuPDF
 Row = dict[str, str]
 
 # Locations for saving
-INPUT_FOLDER: str = "abstracts_raw"
-OUTPUT_FOLDER: str = "abstracts_clean"
-CSV_OUTPUT_FOLDER: str = "abstract_csv"
-JSON_OUTPUT_FOLDER: str = "abstract_json"
+OUTPUT_ROOT: str = "output"
+INPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstracts_raw"
+OUTPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstracts_clean"
+CSV_OUTPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstract_csv"
+JSON_OUTPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstract_json"
 # File for storage
 OUTPUT_CSV: str = "anonymised_abstracts.csv"
 OUTPUT_JSON: str = "anonymised_abstracts.json"
@@ -59,7 +60,7 @@ def parse_args() -> argparse.Namespace:
         nargs="?",
         help=(
             "Optional PDF file name or path to process. If omitted, "
-            "all PDF files in abstracts_raw are processed."
+            f"all PDF files in {INPUT_FOLDER} are processed."
         ),
         type=str,
     )
