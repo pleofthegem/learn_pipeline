@@ -21,3 +21,4 @@ __pycache__/
 *.rar
 !abstract_001.pdf
 !abstract_002.pdf
+!webinar/Regions.csv

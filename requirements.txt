@@ -1,2 +1,4 @@
 PyMuPDF
+openpyxl
+pandas
 pytest

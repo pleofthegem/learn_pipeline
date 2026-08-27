@@ -239,6 +239,46 @@ This empties `output/abstract_csv/`, `output/abstract_json/`,
 `output/abstracts_raw/`, and `output/abstracts_split/`. It leaves `input/`
 untouched.
 
+## Webinar Report Pipeline
+
+`webinar/process_webinar_report.py` replaces the PowerShell and R steps in
+`webinar/complete pipeline.txt`. It finds the `Attendee Details` section in a
+raw Zoom attendee report, removes the report preamble, fills registration data
+across repeat connections, removes AI notetakers, and creates cleaned and
+summary dataframes.
+
+The attendee header row is read directly from each report, so its columns may
+be reordered and custom registration question headings may vary. The cleaned
+sheet preserves those source headings and their order. There is no fixed list
+of required source columns: available fields are transformed, while unavailable
+summary fields are left blank. Email can also be identified from its values
+when its heading is unfamiliar.
+
+Place raw Zoom attendee CSV files in `webinar/input/`, then run:
+
+```bash
+python webinar/process_webinar_report.py
+```
+
+Every CSV directly inside `webinar/input/` is processed. To process a specific
+file or a different folder, provide its path:
+
+```bash
+python webinar/process_webinar_report.py "path/to/attendee report.csv"
+```
+
+The script uses `webinar/Regions.csv` and writes one Excel workbook per input to
+`webinar/output/`. Each workbook contains:
+
+- `Cleaned data`: the attendee dataframe after removing the Zoom report
+  preamble, filling repeat-connection fields, removing AI notetakers, and
+  reducing join and leave dates to times.
+- `Summary`: one row per email address, with connection count, total session
+  time, last leave time, attendance details, demographics, and region.
+
+Use `--regions path/to/Regions.csv` or `--output-folder path/to/output` to
+override either default.
+
 ## Tests
 
 ```bash
