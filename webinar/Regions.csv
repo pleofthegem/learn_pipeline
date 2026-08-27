@@ -1,144 +1,68 @@
 no.,Country,Region
-1,France,Europe & Central Asia
-2,Costa Rica,Latin America & Caribbean
-3,Sint Maarten,Latin America & Caribbean
-4,Canada,North America
-5,Panama,Latin America & Caribbean
-6,Greenland,Europe & Central Asia
-7,Curaçao,Latin America & Caribbean
-7,Curacao,Latin America & Caribbean
-8,Aruba,Latin America & Caribbean
-9,Bahamas,Latin America & Caribbean
-10,St. Pierre and Miquelon,North America
-11,Trinidad and Tobago,Latin America & Caribbean
-12,Barbados,Latin America & Caribbean
-13,St. Kitts and Nevis,Latin America & Caribbean
-14,Puerto Rico,Latin America & Caribbean
-15,Bermuda,North America
-16,Cyprus,Europe & Central Asia
-17,South Korea,East Asia & Pacific
-18,Brunei,East Asia & Pacific
-19,Hong Kong,East Asia & Pacific
-19,Hong Kong SAR,East Asia & Pacific
-20,Japan,East Asia & Pacific
-21,Singapore,East Asia & Pacific
-22,Macao,East Asia & Pacific
-23,Chile,Latin America & Caribbean
-24,Guyana,Latin America & Caribbean
-25,Uruguay,Latin America & Caribbean
-26,Lithuania,Europe & Central Asia
-27,Russia,Europe & Central Asia
-28,Czechia,Europe & Central Asia
-28,Czech Republic,Europe & Central Asia
-29,Germany,Europe & Central Asia
-30,Estonia,Europe & Central Asia
-31,Latvia,Europe & Central Asia
-32,Norway,Europe & Central Asia
-33,Sweden,Europe & Central Asia
-34,Finland,Europe & Central Asia
-35,Luxembourg,Europe & Central Asia
-36,Belgium,Europe & Central Asia
-37,Spain,Europe & Central Asia
-38,Denmark,Europe & Central Asia
-39,Romania,Europe & Central Asia
-40,Hungary,Europe & Central Asia
-41,Slovakia,Europe & Central Asia
-42,Poland,Europe & Central Asia
-43,Ireland,Europe & Central Asia
-44,United Kingdom,Europe & Central Asia
-45,Austria,Europe & Central Asia
-46,Italy,Europe & Central Asia
-47,Switzerland,Europe & Central Asia
-48,Netherlands,Europe & Central Asia
-49,Liechtenstein,Europe & Central Asia
-50,Croatia,Europe & Central Asia
-51,Slovenia,Europe & Central Asia
-52,Bulgaria,Europe & Central Asia
-53,San Marino,Europe & Central Asia
-54,Monaco,Europe & Central Asia
-55,Andorra,Europe & Central Asia
-56,Portugal,Europe & Central Asia
-57,Iceland,Europe & Central Asia
-58,Jersey,Europe & Central Asia
-59,Guernsey,Europe & Central Asia
-60,Isle of Man,Europe & Central Asia
-61,Åland,Europe & Central Asia
-61,Aland,Europe & Central Asia
-62,Australia,East Asia & Pacific
-63,New Zealand,East Asia & Pacific
-64,New Caledonia,East Asia & Pacific
-65,Norfolk Island,East Asia & Pacific
-66,Nauru,East Asia & Pacific
-67,Niue,East Asia & Pacific
-68,American Samoa,East Asia & Pacific
-69,Palau,East Asia & Pacific
-70,Guam,East Asia & Pacific
-71,Seychelles,Sub-Saharan Africa
-72,Greece,Europe & Central Asia
-73,Anguilla,Latin America & Caribbean
-74,Bahrain,"Middle East, North Africa, Afghanistan & Pakistan"
-75,Israel,"Middle East, North Africa, Afghanistan & Pakistan"
-76,Kuwait,"Middle East, North Africa, Afghanistan & Pakistan"
-77,Malta,"Middle East, North Africa, Afghanistan & Pakistan"
-78,Montserrat,Latin America & Caribbean
-79,Oman,"Middle East, North Africa, Afghanistan & Pakistan"
-80,Qatar,"Middle East, North Africa, Afghanistan & Pakistan"
-81,Saudi Arabia,"Middle East, North Africa, Afghanistan & Pakistan"
-82,United Arab Emirates,"Middle East, North Africa, Afghanistan & Pakistan"
-83,Wallis and Futuna,East Asia & Pacific
-84,Turks and Caicos Islands,Latin America & Caribbean
-85,St. Martin,Latin America & Caribbean
-86,St. Barthélemy,Latin America & Caribbean
-86,St. Barthelemy,Latin America & Caribbean
-87,St. Helena,Europe & Central Asia
-87,Saint Helena,Europe & Central Asia
-88,Northern Mariana Islands,East Asia & Pacific
-89,French Polynesia,East Asia & Pacific
-90,Falkland Islands,Latin America & Caribbean
-91,Cook Islands,East Asia & Pacific
-92,Cayman Islands,Latin America & Caribbean
-94,Antigua and Barbuda,Latin America & Caribbean
-95,Pitcairn Islands,East Asia & Pacific
-96,Heard Island and McDonald Islands,Sub-Saharan Africa
-97,British Indian Ocean Territory,Sub-Saharan Africa
-98,French Southern and Antarctic Lands,Sub-Saharan Africa
-99,United States,North America
-100,Virgin Islands (US),Latin America & Caribbean
-101,Faroe Islands,Europe & Central Asia
-102,Indian Ocean Territories,East Asia & Pacific
 103,Afghanistan,"Middle East, North Africa, Afghanistan & Pakistan"
+61,Aland,Europe & Central Asia
+61,Åland,Europe & Central Asia
 104,Albania,Europe & Central Asia
 105,Algeria,"Middle East, North Africa, Afghanistan & Pakistan"
+68,American Samoa,East Asia & Pacific
+55,Andorra,Europe & Central Asia
 106,Angola,Sub-Saharan Africa
+73,Anguilla,Latin America & Caribbean
+232,Antarctica,Antarctica
+94,Antigua and Barbuda,Latin America & Caribbean
 107,Argentina,Latin America & Caribbean
 108,Armenia,Europe & Central Asia
+8,Aruba,Latin America & Caribbean
+62,Australia,East Asia & Pacific
+45,Austria,Europe & Central Asia
 109,Azerbaijan,Europe & Central Asia
+9,Bahamas,Latin America & Caribbean
+74,Bahrain,"Middle East, North Africa, Afghanistan & Pakistan"
 110,Bangladesh,South Asia
+12,Barbados,Latin America & Caribbean
 111,Belarus,Europe & Central Asia
+36,Belgium,Europe & Central Asia
 112,Belize,Latin America & Caribbean
 113,Benin,Sub-Saharan Africa
+15,Bermuda,North America
 114,Bhutan,South Asia
 115,Bolivia,Latin America & Caribbean
 116,Bosnia and Herzegovina,Europe & Central Asia
 117,Botswana,Sub-Saharan Africa
 118,Brazil,Latin America & Caribbean
+97,British Indian Ocean Territory,Sub-Saharan Africa
+18,Brunei,East Asia & Pacific
+52,Bulgaria,Europe & Central Asia
 119,Burkina Faso,Sub-Saharan Africa
 120,Burundi,Sub-Saharan Africa
+130,C?te d'Ivoire,Sub-Saharan Africa
 121,Cabo Verde,Sub-Saharan Africa
 122,Cambodia,East Asia & Pacific
 123,Cameroon,Sub-Saharan Africa
+4,Canada,North America
+92,Cayman Islands,Latin America & Caribbean
 124,Central African Republic,Sub-Saharan Africa
 125,Chad,Sub-Saharan Africa
+#N/A,Channel Islands,Europe & Central Asia
+23,Chile,Latin America & Caribbean
 126,China,East Asia & Pacific
 127,Colombia,Latin America & Caribbean
 128,Comoros,Sub-Saharan Africa
 129,Congo,Sub-Saharan Africa
-130,C?te d'Ivoire,Sub-Saharan Africa
-130,Côte d'Ivoire,Sub-Saharan Africa
-130,Cote d'Ivoire,Sub-Saharan Africa
-131,Cuba,Latin America & Caribbean
 132,"Congo, Democratic Republic of the",Sub-Saharan Africa
+91,Cook Islands,East Asia & Pacific
+2,Costa Rica,Latin America & Caribbean
+130,Cote d'Ivoire,Sub-Saharan Africa
+130,Côte d'Ivoire,Sub-Saharan Africa
+50,Croatia,Europe & Central Asia
+131,Cuba,Latin America & Caribbean
+7,Curacao,Latin America & Caribbean
+7,Curaçao,Latin America & Caribbean
+16,Cyprus,Europe & Central Asia
+28,Czech Republic,Europe & Central Asia
+28,Czechia,Europe & Central Asia
 132,Dem. Rep. Congo,Sub-Saharan Africa
+38,Denmark,Europe & Central Asia
 133,Djibouti,"Middle East, North Africa, Afghanistan & Pakistan"
 134,Dominica,Latin America & Caribbean
 135,Dominican Republic,Latin America & Caribbean
@@ -147,118 +71,198 @@ no.,Country,Region
 138,El Salvador,Latin America & Caribbean
 139,Equatorial Guinea,Sub-Saharan Africa
 140,Eritrea,Sub-Saharan Africa
+30,Estonia,Europe & Central Asia
 141,Eswatini,Sub-Saharan Africa
 142,Ethiopia,Sub-Saharan Africa
+90,Falkland Islands,Latin America & Caribbean
+101,Faroe Islands,Europe & Central Asia
 143,Fiji,East Asia & Pacific
+34,Finland,Europe & Central Asia
+1,France,Europe & Central Asia
+89,French Polynesia,East Asia & Pacific
+98,French Southern and Antarctic Lands,Sub-Saharan Africa
 144,Gabon,Sub-Saharan Africa
 145,Gambia,Sub-Saharan Africa
 146,Georgia,Europe & Central Asia
+29,Germany,Europe & Central Asia
 147,Ghana,Sub-Saharan Africa
+241,Gibraltar,Europe & Central Asia
+72,Greece,Europe & Central Asia
+6,Greenland,Europe & Central Asia
 148,Grenada,Latin America & Caribbean
+70,Guam,East Asia & Pacific
 149,Guatemala,Latin America & Caribbean
+59,Guernsey,Europe & Central Asia
 150,Guinea,Sub-Saharan Africa
 151,Guinea-Bissau,Sub-Saharan Africa
+24,Guyana,Latin America & Caribbean
+24,French Guiana,Latin America & Caribbean
 152,Haiti,Latin America & Caribbean
+96,Heard Island and McDonald Islands,Sub-Saharan Africa
 153,Honduras,Latin America & Caribbean
+19,Hong Kong,East Asia & Pacific
+19,Hong Kong SAR,East Asia & Pacific
+40,Hungary,Europe & Central Asia
+57,Iceland,Europe & Central Asia
 154,India,South Asia
+102,Indian Ocean Territories,East Asia & Pacific
 155,Indonesia,East Asia & Pacific
 156,Iran,"Middle East, North Africa, Afghanistan & Pakistan"
 157,Iraq,"Middle East, North Africa, Afghanistan & Pakistan"
+43,Ireland,Europe & Central Asia
+60,Isle of Man,Europe & Central Asia
+75,Israel,"Middle East, North Africa, Afghanistan & Pakistan"
+46,Italy,Europe & Central Asia
 158,Jamaica,Latin America & Caribbean
+20,Japan,East Asia & Pacific
+58,Jersey,Europe & Central Asia
 159,Jordan,"Middle East, North Africa, Afghanistan & Pakistan"
 160,Kazakhstan,Europe & Central Asia
 161,Kenya,Sub-Saharan Africa
 162,Kiribati,East Asia & Pacific
+239,Kosovo,Europe & Central Asia
+76,Kuwait,"Middle East, North Africa, Afghanistan & Pakistan"
 163,Kyrgyzstan,Europe & Central Asia
-164,Laos,East Asia & Pacific
 164,Lao People's Democratic Republic,East Asia & Pacific
+164,Laos,East Asia & Pacific
+31,Latvia,Europe & Central Asia
 165,Lebanon,"Middle East, North Africa, Afghanistan & Pakistan"
 166,Lesotho,Sub-Saharan Africa
 167,Liberia,Sub-Saharan Africa
 168,Libya,"Middle East, North Africa, Afghanistan & Pakistan"
+49,Liechtenstein,Europe & Central Asia
+26,Lithuania,Europe & Central Asia
+35,Luxembourg,Europe & Central Asia
+22,Macao,East Asia & Pacific
+22,Macao SAR,East Asia & Pacific
 169,Madagascar,Sub-Saharan Africa
 170,Malawi,Sub-Saharan Africa
 171,Malaysia,East Asia & Pacific
 172,Maldives,South Asia
 173,Mali,Sub-Saharan Africa
+77,Malta,"Middle East, North Africa, Afghanistan & Pakistan"
 174,Marshall Islands,East Asia & Pacific
 175,Mauritania,Sub-Saharan Africa
 176,Mauritius,Sub-Saharan Africa
 177,Mexico,Latin America & Caribbean
 178,Micronesia,East Asia & Pacific
 179,Moldova,Europe & Central Asia
+179,"Moldova, Republic of",Europe & Central Asia
+54,Monaco,Europe & Central Asia
 180,Mongolia,East Asia & Pacific
 181,Montenegro,Europe & Central Asia
+78,Montserrat,Latin America & Caribbean
 182,Morocco,"Middle East, North Africa, Afghanistan & Pakistan"
 183,Mozambique,Sub-Saharan Africa
 184,Myanmar,East Asia & Pacific
 185,Namibia,Sub-Saharan Africa
+66,Nauru,East Asia & Pacific
 186,Nepal,South Asia
+48,Netherlands,Europe & Central Asia
+64,New Caledonia,East Asia & Pacific
+63,New Zealand,East Asia & Pacific
 187,Nicaragua,Latin America & Caribbean
 188,Niger,Sub-Saharan Africa
 189,Nigeria,Sub-Saharan Africa
+67,Niue,East Asia & Pacific
+65,Norfolk Island,East Asia & Pacific
 190,North Korea,East Asia & Pacific
 191,North Macedonia,Europe & Central Asia
+233,Northern Cyprus,Europe & Central Asia
+88,Northern Mariana Islands,East Asia & Pacific
+32,Norway,Europe & Central Asia
+79,Oman,"Middle East, North Africa, Afghanistan & Pakistan"
 192,Pakistan,"Middle East, North Africa, Afghanistan & Pakistan"
+69,Palau,East Asia & Pacific
 193,Palestine,"Middle East, North Africa, Afghanistan & Pakistan"
 193,Palestinian Territories,"Middle East, North Africa, Afghanistan & Pakistan"
+5,Panama,Latin America & Caribbean
 194,Papua New Guinea,East Asia & Pacific
 195,Paraguay,Latin America & Caribbean
 196,Peru,Latin America & Caribbean
 197,Philippines,East Asia & Pacific
+95,Pitcairn Islands,East Asia & Pacific
+42,Poland,Europe & Central Asia
+56,Portugal,Europe & Central Asia
+14,Puerto Rico,Latin America & Caribbean
+80,Qatar,"Middle East, North Africa, Afghanistan & Pakistan"
+246,Reunion,Sub-Saharan Africa
+246,Réunion,Sub-Saharan Africa
+39,Romania,Europe & Central Asia
+27,Russia,Europe & Central Asia
 198,Rwanda,Sub-Saharan Africa
-199,Samoa,East Asia & Pacific
-200,São Tomé and Príncipe,Sub-Saharan Africa
-200,Sao Tome and Principe,Sub-Saharan Africa
-201,Senegal,Sub-Saharan Africa
-202,Serbia,Europe & Central Asia
-203,Sierra Leone,Sub-Saharan Africa
-204,Solomon Islands,East Asia & Pacific
-205,Somalia,Sub-Saharan Africa
-206,South Africa,Sub-Saharan Africa
-207,South Sudan,Sub-Saharan Africa
-208,Sri Lanka,South Asia
-209,St. Lucia,Latin America & Caribbean
+87,Saint Helena,Europe & Central Asia
 209,Saint Lucia,Latin America & Caribbean
 210,Saint Vincent and the Grenadines,Latin America & Caribbean
+199,Samoa,East Asia & Pacific
+53,San Marino,Europe & Central Asia
+200,Sao Tome and Principe,Sub-Saharan Africa
+200,São Tomé and Príncipe,Sub-Saharan Africa
+81,Saudi Arabia,"Middle East, North Africa, Afghanistan & Pakistan"
+201,Senegal,Sub-Saharan Africa
+202,Serbia,Europe & Central Asia
+71,Seychelles,Sub-Saharan Africa
+234,Siachen Glacier,South Asia
+203,Sierra Leone,Sub-Saharan Africa
+21,Singapore,East Asia & Pacific
+3,Sint Maarten,Latin America & Caribbean
+41,Slovakia,Europe & Central Asia
+51,Slovenia,Europe & Central Asia
+204,Solomon Islands,East Asia & Pacific
+205,Somalia,Sub-Saharan Africa
+235,Somaliland,Sub-Saharan Africa
+206,South Africa,Sub-Saharan Africa
+247,South Georgia and the Islands,Europe & Central Asia
+247,South Georgia and the South Sandwich Islands,Europe & Central Asia
+17,South Korea,East Asia & Pacific
+17,"Korea, Republic of",East Asia & Pacific
+207,South Sudan,Sub-Saharan Africa
+37,Spain,Europe & Central Asia
+208,Sri Lanka,South Asia
+86,St. Barthelemy,Latin America & Caribbean
+86,St. Barthélemy,Latin America & Caribbean
+87,St. Helena,Europe & Central Asia
+13,St. Kitts and Nevis,Latin America & Caribbean
+209,St. Lucia,Latin America & Caribbean
+85,St. Martin,Latin America & Caribbean
+10,St. Pierre and Miquelon,North America
 210,St. Vincent and the Grenadines,Latin America & Caribbean
 211,Sudan,Sub-Saharan Africa
 212,Suriname,Latin America & Caribbean
+33,Sweden,Europe & Central Asia
+47,Switzerland,Europe & Central Asia
+240,Syria,"Middle East, North Africa, Afghanistan & Pakistan"
+240,Syrian Arab Republic,"Middle East, North Africa, Afghanistan & Pakistan"
+231,Taiwan,East Asia & Pacific
 213,Tajikistan,Europe & Central Asia
 214,Tanzania,Sub-Saharan Africa
 215,Thailand,East Asia & Pacific
 216,Timor-Leste,East Asia & Pacific
 217,Togo,Sub-Saharan Africa
 218,Tonga,East Asia & Pacific
+11,Trinidad and Tobago,Latin America & Caribbean
 219,Tunisia,"Middle East, North Africa, Afghanistan & Pakistan"
-220,Türkiye,Europe & Central Asia
 220,Turkey,Europe & Central Asia
+220,Türkiye,Europe & Central Asia
 221,Turkmenistan,Europe & Central Asia
+84,Turks and Caicos Islands,Latin America & Caribbean
 222,Tuvalu,East Asia & Pacific
 223,Uganda,Sub-Saharan Africa
 224,Ukraine,Europe & Central Asia
+82,United Arab Emirates,"Middle East, North Africa, Afghanistan & Pakistan"
+44,United Kingdom,Europe & Central Asia
+99,United States,North America
+25,Uruguay,Latin America & Caribbean
 225,Uzbekistan,Europe & Central Asia
 226,Vanuatu,East Asia & Pacific
+236,Vatican,Europe & Central Asia
+237,Venezuela,Latin America & Caribbean
 227,Vietnam,East Asia & Pacific
+248,Virgin Islands (British),Latin America & Caribbean
+248,Virgin Islands (UK),Latin America & Caribbean
+100,Virgin Islands (US),Latin America & Caribbean
+83,Wallis and Futuna,East Asia & Pacific
+238,Western Sahara,Middle East & North Africa
 228,Yemen,"Middle East, North Africa, Afghanistan & Pakistan"
 229,Zambia,Sub-Saharan Africa
 230,Zimbabwe,Sub-Saharan Africa
-231,Taiwan,East Asia & Pacific
-232,Antarctica,Antarctica
-233,Northern Cyprus,Europe & Central Asia
-234,Siachen Glacier,South Asia
-235,Somaliland,Sub-Saharan Africa
-236,Vatican,Europe & Central Asia
-237,Venezuela,Latin America & Caribbean
-238,Western Sahara,Middle East & North Africa
-239,Kosovo,Europe & Central Asia
-240,Syria,"Middle East, North Africa, Afghanistan & Pakistan"
-240,Syrian Arab Republic,"Middle East, North Africa, Afghanistan & Pakistan"
-241,Gibraltar,Europe & Central Asia
-246,Réunion,Sub-Saharan Africa
-246,Reunion,Sub-Saharan Africa
-247,South Georgia and the Islands,Europe & Central Asia
-247,South Georgia and the South Sandwich Islands,Europe & Central Asia
-248,Virgin Islands (British),Latin America & Caribbean
-248,Virgin Islands (UK),Latin America & Caribbean
-#N/A,Channel Islands,Europe & Central Asia
