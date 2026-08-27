@@ -241,8 +241,7 @@ untouched.
 
 ## Webinar Report Pipeline
 
-`webinar/process_webinar_report.py` replaces the PowerShell and R steps in
-`webinar/complete pipeline.txt`. It finds either the `Attendee Details` section
+`webinar/process_webinar_report.py` finds either the `Attendee Details` section
 or a compact Zoom attendee header, removes the report preamble, fills
 registration data across repeat connections, removes AI notetakers, and creates
 cleaned and summary dataframes.
