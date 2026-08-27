@@ -1,7 +1,7 @@
 no.,Country,Region
 103,Afghanistan,"Middle East, North Africa, Afghanistan & Pakistan"
 61,Aland,Europe & Central Asia
-61,Åland,Europe & Central Asia
+61,ï¿½land,Europe & Central Asia
 104,Albania,Europe & Central Asia
 105,Algeria,"Middle East, North Africa, Afghanistan & Pakistan"
 68,American Samoa,East Asia & Pacific
@@ -53,11 +53,11 @@ no.,Country,Region
 91,Cook Islands,East Asia & Pacific
 2,Costa Rica,Latin America & Caribbean
 130,Cote d'Ivoire,Sub-Saharan Africa
-130,Côte d'Ivoire,Sub-Saharan Africa
+130,Cï¿½te d'Ivoire,Sub-Saharan Africa
 50,Croatia,Europe & Central Asia
 131,Cuba,Latin America & Caribbean
 7,Curacao,Latin America & Caribbean
-7,Curaçao,Latin America & Caribbean
+7,Curaï¿½ao,Latin America & Caribbean
 16,Cyprus,Europe & Central Asia
 28,Czech Republic,Europe & Central Asia
 28,Czechia,Europe & Central Asia
@@ -135,6 +135,7 @@ no.,Country,Region
 35,Luxembourg,Europe & Central Asia
 22,Macao,East Asia & Pacific
 22,Macao SAR,East Asia & Pacific
+22,Macau SAR,East Asia & Pacific
 169,Madagascar,Sub-Saharan Africa
 170,Malawi,Sub-Saharan Africa
 171,Malaysia,East Asia & Pacific
@@ -187,7 +188,7 @@ no.,Country,Region
 14,Puerto Rico,Latin America & Caribbean
 80,Qatar,"Middle East, North Africa, Afghanistan & Pakistan"
 246,Reunion,Sub-Saharan Africa
-246,Réunion,Sub-Saharan Africa
+246,Rï¿½union,Sub-Saharan Africa
 39,Romania,Europe & Central Asia
 27,Russia,Europe & Central Asia
 198,Rwanda,Sub-Saharan Africa
@@ -197,7 +198,7 @@ no.,Country,Region
 199,Samoa,East Asia & Pacific
 53,San Marino,Europe & Central Asia
 200,Sao Tome and Principe,Sub-Saharan Africa
-200,São Tomé and Príncipe,Sub-Saharan Africa
+200,Sï¿½o Tomï¿½ and Prï¿½ncipe,Sub-Saharan Africa
 81,Saudi Arabia,"Middle East, North Africa, Afghanistan & Pakistan"
 201,Senegal,Sub-Saharan Africa
 202,Serbia,Europe & Central Asia
@@ -220,7 +221,7 @@ no.,Country,Region
 37,Spain,Europe & Central Asia
 208,Sri Lanka,South Asia
 86,St. Barthelemy,Latin America & Caribbean
-86,St. Barthélemy,Latin America & Caribbean
+86,St. Barthï¿½lemy,Latin America & Caribbean
 87,St. Helena,Europe & Central Asia
 13,St. Kitts and Nevis,Latin America & Caribbean
 209,St. Lucia,Latin America & Caribbean
@@ -243,7 +244,7 @@ no.,Country,Region
 11,Trinidad and Tobago,Latin America & Caribbean
 219,Tunisia,"Middle East, North Africa, Afghanistan & Pakistan"
 220,Turkey,Europe & Central Asia
-220,Türkiye,Europe & Central Asia
+220,Tï¿½rkiye,Europe & Central Asia
 221,Turkmenistan,Europe & Central Asia
 84,Turks and Caicos Islands,Latin America & Caribbean
 222,Tuvalu,East Asia & Pacific
