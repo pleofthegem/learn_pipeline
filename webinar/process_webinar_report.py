@@ -12,12 +12,20 @@ ATTENDEE_MARKER = "Attendee Details"
 CSV_ENCODINGS = ("utf-8-sig", "cp1252")
 DATE_TIME_FORMAT = "%m/%d/%Y %I:%M:%S %p"
 NOTETAKER_NAMES = ("Otter.ai", "Fireflies.ai", "Notetaker")
+ATTENDEE_FOOTER_MARKERS = {
+    "other attended",
+    "other attendeed",
+    "other attendee",
+    "other attendees",
+}
 WEBINAR_FOLDER = Path(__file__).resolve().parent
 INPUT_FOLDER = WEBINAR_FOLDER / "input"
 OUTPUT_FOLDER = WEBINAR_FOLDER / "output"
 REGIONS_FILE = WEBINAR_FOLDER / "Regions.csv"
 CLEAN_SHEET_NAME = "Cleaned data"
 SUMMARY_SHEET_NAME = "Summary"
+MASTER_SHEET_NAME = "Master summary"
+MASTER_WORKBOOK_NAME = "master_webinar_summary.xlsx"
 
 ROLE_ALIASES = {
     "attended": ("attended", "attendance status"),
@@ -99,6 +107,8 @@ SUMMARY_COLUMNS = [
     "Source",
 ]
 
+MASTER_COLUMNS = ["Webinar", *SUMMARY_COLUMNS]
+
 def read_csv_rows(path: Path) -> list[list[str]]:
     """Read CSV rows, accepting Zoom's UTF-8 files and the legacy region file."""
     for encoding in CSV_ENCODINGS:
@@ -123,19 +133,20 @@ def find_attendee_section(rows: list[list[str]]) -> int:
     raise ValueError(f"Could not find the '{ATTENDEE_MARKER}' section")
 
 
-def extract_webinar_id(rows: list[list[str]]) -> str:
-    """Extract the webinar ID from the report preamble."""
+def extract_report_value(rows: list[list[str]], field_name: str) -> str:
+    """Extract a named value from the report preamble."""
+    normalised_field_name = normalise_column_name(field_name)
     for index, row in enumerate(rows[:-1]):
         labels = [normalise_column_name(value) for value in row]
-        if "webinar id" not in labels:
+        if normalised_field_name not in labels:
             continue
 
-        webinar_id_index = labels.index("webinar id")
+        value_index = labels.index(normalised_field_name)
         values = rows[index + 1]
-        if webinar_id_index < len(values):
-            return values[webinar_id_index].strip()
+        if value_index < len(values):
+            return values[value_index].strip()
 
-    raise ValueError("Could not find a Webinar ID in the report preamble")
+    raise ValueError(f"Could not find '{field_name}' in the report preamble")
 
 
 def normalise_column_name(column_name: str) -> str:
@@ -188,6 +199,11 @@ def attendee_rows_to_dataframe(
 
     attendee_rows: list[list[str]] = []
     for line_number, row in enumerate(rows[header_index + 1 :], header_index + 2):
+        row_labels = [
+            normalise_column_name(value) for value in row if value.strip()
+        ]
+        if len(row_labels) == 1 and row_labels[0] in ATTENDEE_FOOTER_MARKERS:
+            break
         if not any(value.strip() for value in row):
             continue
 
@@ -233,7 +249,7 @@ def prepare_attendee_dataframe(input_path: Path) -> pd.DataFrame:
     dataframe = attendee_rows_to_dataframe(rows, header_index, input_path)
     columns = resolve_attendee_columns(dataframe.columns)
 
-    dataframe["WebinarID"] = extract_webinar_id(rows)
+    dataframe["WebinarID"] = extract_report_value(rows, "Webinar ID")
     connection_columns = {
         columns[role]
         for role in CONNECTION_SPECIFIC_ROLES
@@ -242,7 +258,8 @@ def prepare_attendee_dataframe(input_path: Path) -> pd.DataFrame:
     forward_fill_columns = [
         column
         for column in dataframe.columns
-        if column not in connection_columns and column != "WebinarID"
+        if column not in connection_columns
+        and column != "WebinarID"
     ]
     dataframe[forward_fill_columns] = (
         dataframe[forward_fill_columns]
@@ -386,6 +403,15 @@ def default_output_path(
     return output_folder / f"{base_stem}.xlsx"
 
 
+def webinar_name_from_filename(workbook_path: Path) -> str:
+    """Remove only the attendee-report suffix from a workbook filename."""
+    name = workbook_path.stem
+    for suffix in ("_Attendee report", " Attendee report"):
+        if name.casefold().endswith(suffix.casefold()):
+            return name[: -len(suffix)].rstrip(" _")
+    return name
+
+
 def process_webinar_report(
     input_path: Path,
     regions_path: Path,
@@ -403,6 +429,44 @@ def process_webinar_report(
         summary.to_excel(workbook, sheet_name=SUMMARY_SHEET_NAME, index=False)
 
     return clean, summary
+
+
+def build_master_summary(
+    output_folder: Path = OUTPUT_FOLDER,
+    master_path: Path | None = None,
+) -> pd.DataFrame:
+    """Rebuild one master table from every generated webinar summary."""
+    master_path = master_path or output_folder / MASTER_WORKBOOK_NAME
+    summaries: list[pd.DataFrame] = []
+
+    for workbook_path in sorted(output_folder.glob("*.xlsx")):
+        if workbook_path.resolve() == master_path.resolve():
+            continue
+
+        with pd.ExcelFile(workbook_path) as workbook:
+            required_sheets = {CLEAN_SHEET_NAME, SUMMARY_SHEET_NAME}
+            if not required_sheets.issubset(workbook.sheet_names):
+                continue
+
+            summary = pd.read_excel(
+                workbook,
+                sheet_name=SUMMARY_SHEET_NAME,
+                keep_default_na=False,
+            ).reindex(columns=SUMMARY_COLUMNS, fill_value="")
+
+        summary.insert(0, "Webinar", webinar_name_from_filename(workbook_path))
+        summaries.append(summary)
+
+    master = (
+        pd.concat(summaries, ignore_index=True)
+        if summaries
+        else pd.DataFrame(columns=MASTER_COLUMNS)
+    )
+    master = master.reindex(columns=MASTER_COLUMNS, fill_value="")
+
+    master_path.parent.mkdir(parents=True, exist_ok=True)
+    master.to_excel(master_path, sheet_name=MASTER_SHEET_NAME, index=False)
+    return master
 
 
 def find_input_files(input_path: Path) -> list[Path]:
@@ -476,6 +540,10 @@ def main() -> None:
                 "No region mapping found for: "
                 + ", ".join(sorted(missing_regions.tolist()))
             )
+
+    master_path = args.output_folder / MASTER_WORKBOOK_NAME
+    master = build_master_summary(args.output_folder, master_path)
+    print(f"Wrote {master_path} with {len(master)} accumulated summary rows.")
 
 
 if __name__ == "__main__":

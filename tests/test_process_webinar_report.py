@@ -5,13 +5,18 @@ import pandas as pd
 
 from webinar.process_webinar_report import (
     CLEAN_SHEET_NAME,
+    MASTER_COLUMNS,
+    MASTER_SHEET_NAME,
+    MASTER_WORKBOOK_NAME,
     SUMMARY_COLUMNS,
     SUMMARY_SHEET_NAME,
+    build_master_summary,
     build_output_dataframes,
     default_output_path,
     find_input_files,
     prepare_attendee_dataframe,
     process_webinar_report,
+    webinar_name_from_filename,
 )
 
 ROW_VALUE_COLUMNS = [
@@ -138,7 +143,11 @@ def attendee_row(
     ]
 
 
-def write_raw_report(path: Path) -> None:
+def write_raw_report(
+    path: Path,
+    webinar_name: str = "Test Webinar",
+    webinar_id: str = "123 456 789",
+) -> None:
     alice = attendee_row(
         attended="Yes",
         name="Alice Example",
@@ -224,7 +233,7 @@ def write_raw_report(path: Path) -> None:
         ["Attendee Report"],
         ["Report generated time", "01/30/2026 11:01:47 AM"],
         ["Topic", "Webinar ID", "Actual Start Time"],
-        ["Test Webinar", "123 456 789", "01/23/2026 11:30:00 AM"],
+        [webinar_name, webinar_id, "01/23/2026 11:30:00 AM"],
         ["Host Details"],
         ["Attendee Details"],
         SOURCE_COLUMNS,
@@ -371,6 +380,53 @@ def test_find_input_files_accepts_a_file_or_folder(tmp_path: Path) -> None:
     assert find_input_files(input_folder) == [first_report, second_report]
 
 
+def test_master_summary_rebuilds_all_generated_summaries_without_duplicates(
+    tmp_path: Path,
+) -> None:
+    regions_path = tmp_path / "Regions.csv"
+    output_folder = tmp_path / "output"
+    write_regions(regions_path)
+
+    reports = (
+        ("01_23_Alpha Webinar_Attendee report (raw).csv", "Different Topic", "111"),
+        ("04_16_Beta Webinar_Attendee report (raw).csv", "Another Topic", "222"),
+    )
+    for report_name, webinar_name, webinar_id in reports:
+        report_path = tmp_path / report_name
+        write_raw_report(report_path, webinar_name, webinar_id)
+        process_webinar_report(
+            report_path,
+            regions_path,
+            default_output_path(report_path, output_folder),
+        )
+
+    first_master = build_master_summary(output_folder)
+    second_master = build_master_summary(output_folder)
+    master_path = output_folder / MASTER_WORKBOOK_NAME
+
+    assert first_master.columns.tolist() == MASTER_COLUMNS
+    assert len(first_master) == 4
+    assert len(second_master) == 4
+    assert first_master["Webinar"].value_counts().to_dict() == {
+        "01_23_Alpha Webinar": 2,
+        "04_16_Beta Webinar": 2,
+    }
+    assert "WebinarID" not in first_master
+
+    saved_master = pd.read_excel(master_path, sheet_name=MASTER_SHEET_NAME)
+    assert len(saved_master) == 4
+    assert saved_master.columns.tolist() == MASTER_COLUMNS
+
+
+def test_webinar_name_is_derived_from_report_filename() -> None:
+    assert webinar_name_from_filename(
+        Path("04_16_AI in Water_Attendee report.xlsx")
+    ) == "04_16_AI in Water"
+    assert webinar_name_from_filename(
+        Path("01_23_Cranfield University_Attendee Report.xlsx")
+    ) == "01_23_Cranfield University"
+
+
 def test_sparse_report_does_not_require_fixed_source_columns(tmp_path: Path) -> None:
     report_path = tmp_path / "sparse report.csv"
     rows = [
@@ -392,7 +448,10 @@ def test_sparse_report_does_not_require_fixed_source_columns(tmp_path: Path) -> 
     )
 
     assert clean.columns.tolist() == [
-        "Contact", "Display label", "Custom response", "WebinarID"
+        "Contact",
+        "Display label",
+        "Custom response",
+        "WebinarID",
     ]
     assert summary.loc[0, "Email"] == "person@example.com"
     assert summary.loc[0, "No. connections"] == 2
@@ -443,6 +502,26 @@ def test_unquoted_comma_in_final_country_name_is_rejoined(tmp_path: Path) -> Non
     attendees = prepare_attendee_dataframe(report_path)
 
     assert attendees.loc[0, "Country Name"] == "Congo, Democratic Republic of the"
+
+
+def test_other_attended_footer_and_following_rows_are_removed(tmp_path: Path) -> None:
+    report_path = tmp_path / "footer report.csv"
+    rows = [
+        ["Attendee Report"],
+        ["Topic", "Webinar ID"],
+        ["Footer Webinar", "789 123"],
+        ["Attendee Details"],
+        ["Email", "Display Name"],
+        ["included@example.com", "Included Person"],
+        ["Other Attended"],
+        ["excluded@example.com", "Excluded Person"],
+    ]
+    with report_path.open("w", encoding="utf-8-sig", newline="") as csv_file:
+        csv.writer(csv_file).writerows(rows)
+
+    attendees = prepare_attendee_dataframe(report_path)
+
+    assert attendees["Email"].tolist() == ["included@example.com"]
 
 
 def test_prepare_attendee_dataframe_requires_attendee_section(tmp_path: Path) -> None:

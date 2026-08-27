@@ -254,6 +254,9 @@ of required source columns: available fields are transformed, while unavailable
 summary fields are left blank. Email can also be identified from its values
 when its heading is unfamiliar.
 
+If an `Other Attended` footer is present, that marker and every row beneath it
+are excluded from processing.
+
 Place raw Zoom attendee CSV files in `webinar/input/`, then run:
 
 ```bash
@@ -275,6 +278,16 @@ The script uses `webinar/Regions.csv` and writes one Excel workbook per input to
   reducing join and leave dates to times.
 - `Summary`: one row per email address, with connection count, total session
   time, last leave time, attendance details, demographics, and region.
+
+After the individual workbooks are written, the pipeline rebuilds
+`webinar/output/master_webinar_summary.xlsx` from every generated `Summary`
+sheet in that folder. The master workbook contains one row per attendee per
+webinar and otherwise matches the normal `Summary` shape, with one additional
+`Webinar` column. This name comes from the workbook filename after removing the
+trailing `Attendee report`; leading dates and the rest of the filename are
+preserved. Rebuilding it from the individual workbooks prevents duplicate rows
+on repeated runs while retaining older webinar workbooks that remain in
+`webinar/output/`.
 
 Use `--regions path/to/Regions.csv` or `--output-folder path/to/output` to
 override either default.
