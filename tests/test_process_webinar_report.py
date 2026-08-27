@@ -427,6 +427,16 @@ def test_webinar_name_is_derived_from_report_filename() -> None:
     ) == "01_23_Cranfield University"
 
 
+def test_regions_csv_contains_valid_utf8_characters() -> None:
+    regions_text = Path("webinar/Regions.csv").read_text(encoding="utf-8")
+
+    assert "�" not in regions_text
+    assert "C?te d'Ivoire" not in regions_text
+    assert "Côte d'Ivoire" in regions_text
+    assert "Curaçao" in regions_text
+    assert "Türkiye" in regions_text
+
+
 def test_sparse_report_does_not_require_fixed_source_columns(tmp_path: Path) -> None:
     report_path = tmp_path / "sparse report.csv"
     rows = [
