@@ -284,10 +284,10 @@ After the individual workbooks are written, the pipeline rebuilds
 sheet in that folder. The master workbook contains one row per attendee per
 webinar and otherwise matches the normal `Summary` shape, with one additional
 `Webinar` column. This name comes from the workbook filename after removing the
-trailing `Attendee report`; leading dates and the rest of the filename are
-preserved. Rebuilding it from the individual workbooks prevents duplicate rows
-on repeated runs while retaining older webinar workbooks that remain in
-`webinar/output/`.
+`Attendee report` marker and everything after it, including suffixes such as
+`(clean)`. Leading dates and the rest of the filename are preserved. Rebuilding
+it from the individual workbooks prevents duplicate rows on repeated runs while
+retaining older webinar workbooks that remain in `webinar/output/`.
 
 Use `--regions path/to/Regions.csv` or `--output-folder path/to/output` to
 override either default.

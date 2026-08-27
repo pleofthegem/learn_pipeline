@@ -16,6 +16,7 @@ from webinar.process_webinar_report import (
     find_input_files,
     prepare_attendee_dataframe,
     process_webinar_report,
+    truncate_at_attendee_footer,
     webinar_name_from_filename,
 )
 
@@ -425,6 +426,26 @@ def test_webinar_name_is_derived_from_report_filename() -> None:
     assert webinar_name_from_filename(
         Path("01_23_Cranfield University_Attendee Report.xlsx")
     ) == "01_23_Cranfield University"
+    assert webinar_name_from_filename(
+        Path("01_23_Cranfield University_Attendee report (clean).xlsx")
+    ) == "01_23_Cranfield University"
+
+
+def test_dataframe_footer_and_following_rows_are_removed() -> None:
+    dataframe = pd.DataFrame(
+        {
+            "Email": [
+                "included@example.com",
+                "Other Attended",
+                "excluded@example.com",
+            ],
+            "Attended": ["Attended", "", "Attended"],
+        }
+    )
+
+    truncated = truncate_at_attendee_footer(dataframe)
+
+    assert truncated["Email"].tolist() == ["included@example.com"]
 
 
 def test_regions_csv_contains_valid_utf8_characters() -> None:
@@ -530,8 +551,13 @@ def test_other_attended_footer_and_following_rows_are_removed(tmp_path: Path) ->
         csv.writer(csv_file).writerows(rows)
 
     attendees = prepare_attendee_dataframe(report_path)
+    _, summary = build_output_dataframes(
+        attendees,
+        tmp_path / "unused-regions.csv",
+    )
 
     assert attendees["Email"].tolist() == ["included@example.com"]
+    assert summary["Email"].tolist() == ["included@example.com"]
 
 
 def test_prepare_attendee_dataframe_requires_attendee_section(tmp_path: Path) -> None:

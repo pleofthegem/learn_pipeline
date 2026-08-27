@@ -154,6 +154,24 @@ def normalise_column_name(column_name: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", column_name.casefold()).strip()
 
 
+def is_attendee_footer(values: Iterable[object]) -> bool:
+    """Return whether a row is a standalone attendee footer marker."""
+    labels = [
+        normalise_column_name(str(value))
+        for value in values
+        if pd.notna(value) and str(value).strip()
+    ]
+    return len(labels) == 1 and labels[0] in ATTENDEE_FOOTER_MARKERS
+
+
+def truncate_at_attendee_footer(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Remove an attendee footer and every dataframe row beneath it."""
+    for position, row in enumerate(dataframe.itertuples(index=False, name=None)):
+        if is_attendee_footer(row):
+            return dataframe.iloc[:position].copy()
+    return dataframe
+
+
 def resolve_attendee_columns(columns: Iterable[str]) -> dict[str, str]:
     """Map source headings to the fields used by the transformations."""
     source_columns = list(columns)
@@ -199,10 +217,7 @@ def attendee_rows_to_dataframe(
 
     attendee_rows: list[list[str]] = []
     for line_number, row in enumerate(rows[header_index + 1 :], header_index + 2):
-        row_labels = [
-            normalise_column_name(value) for value in row if value.strip()
-        ]
-        if len(row_labels) == 1 and row_labels[0] in ATTENDEE_FOOTER_MARKERS:
+        if is_attendee_footer(row):
             break
         if not any(value.strip() for value in row):
             continue
@@ -380,6 +395,7 @@ def build_output_dataframes(
             "Total time in session (mins)"
         ].astype("int64")
     summary = summary[SUMMARY_COLUMNS].fillna("")
+    summary = truncate_at_attendee_footer(summary)
 
     clean = dataframe.copy()
     for role in ("join_time", "leave_time"):
@@ -404,12 +420,12 @@ def default_output_path(
 
 
 def webinar_name_from_filename(workbook_path: Path) -> str:
-    """Remove only the attendee-report suffix from a workbook filename."""
+    """Remove the attendee-report marker and everything after it."""
     name = workbook_path.stem
-    for suffix in ("_Attendee report", " Attendee report"):
-        if name.casefold().endswith(suffix.casefold()):
-            return name[: -len(suffix)].rstrip(" _")
-    return name
+    marker_index = name.casefold().find("attendee report")
+    if marker_index != -1:
+        name = name[:marker_index]
+    return name.rstrip(" _-")
 
 
 def process_webinar_report(
@@ -452,7 +468,11 @@ def build_master_summary(
                 workbook,
                 sheet_name=SUMMARY_SHEET_NAME,
                 keep_default_na=False,
-            ).reindex(columns=SUMMARY_COLUMNS, fill_value="")
+            )
+            summary = truncate_at_attendee_footer(summary).reindex(
+                columns=SUMMARY_COLUMNS,
+                fill_value="",
+            )
 
         summary.insert(0, "Webinar", webinar_name_from_filename(workbook_path))
         summaries.append(summary)
