@@ -12,6 +12,7 @@ from webinar.process_webinar_report import (
     SUMMARY_SHEET_NAME,
     build_master_summary,
     build_output_dataframes,
+    clear_output_workbooks,
     default_output_path,
     find_input_files,
     prepare_attendee_dataframe,
@@ -258,6 +259,36 @@ def write_regions(path: Path) -> None:
         )
 
 
+def write_compact_report(path: Path) -> None:
+    rows = [
+        ["Topic", "ID", "Host", "Duration (minutes)", "Participants"],
+        ["Compact Webinar", "987 321", "Example Host", "60", "2"],
+        [],
+        [
+            "Name (original name)",
+            "Email",
+            "Join time",
+            "Leave time",
+            "Duration (minutes)",
+            "Guest",
+            "Recording disclaimer response",
+            "In waiting room",
+        ],
+        [
+            "Alice Example",
+            "alice@example.com",
+            "01/21/2026 02:00:00 PM",
+            "01/21/2026 02:30:00 PM",
+            "30",
+            "No",
+            "",
+            "No",
+        ],
+    ]
+    with path.open("w", encoding="utf-8-sig", newline="") as csv_file:
+        csv.writer(csv_file).writerows(rows)
+
+
 def test_prepare_attendee_dataframe_removes_preamble_and_notetakers(
     tmp_path: Path,
 ) -> None:
@@ -274,6 +305,24 @@ def test_prepare_attendee_dataframe_removes_preamble_and_notetakers(
     assert dataframe.loc[1, "Are you currently an IWA member?"] == "Yes"
     assert dataframe.columns.tolist() == SOURCE_COLUMNS + ["WebinarID"]
     assert dataframe["WebinarID"].unique().tolist() == ["123 456 789"]
+
+
+def test_prepare_attendee_dataframe_detects_compact_zoom_header(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "compact report.csv"
+    write_compact_report(report_path)
+
+    dataframe = prepare_attendee_dataframe(report_path)
+    _, summary = build_output_dataframes(
+        dataframe,
+        tmp_path / "unused-regions.csv",
+    )
+
+    assert dataframe["Email"].tolist() == ["alice@example.com"]
+    assert dataframe["WebinarID"].tolist() == ["987 321"]
+    assert summary.loc[0, "Total time in session (mins)"] == 30
+    assert summary.loc[0, "Last leave time"] == "14:30:00"
 
 
 def test_build_output_dataframes_reproduces_r_summary(tmp_path: Path) -> None:
@@ -379,6 +428,21 @@ def test_find_input_files_accepts_a_file_or_folder(tmp_path: Path) -> None:
 
     assert find_input_files(first_report) == [first_report]
     assert find_input_files(input_folder) == [first_report, second_report]
+
+
+def test_clear_output_workbooks_removes_only_excel_outputs(tmp_path: Path) -> None:
+    output_folder = tmp_path / "output"
+    output_folder.mkdir()
+    (output_folder / "old-report.xlsx").touch()
+    (output_folder / MASTER_WORKBOOK_NAME).touch()
+    retained_file = output_folder / ".gitkeep"
+    retained_file.touch()
+
+    removed_count = clear_output_workbooks(output_folder)
+
+    assert removed_count == 2
+    assert list(output_folder.glob("*.xlsx")) == []
+    assert retained_file.is_file()
 
 
 def test_master_summary_rebuilds_all_generated_summaries_without_duplicates(

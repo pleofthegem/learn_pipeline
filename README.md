@@ -242,10 +242,10 @@ untouched.
 ## Webinar Report Pipeline
 
 `webinar/process_webinar_report.py` replaces the PowerShell and R steps in
-`webinar/complete pipeline.txt`. It finds the `Attendee Details` section in a
-raw Zoom attendee report, removes the report preamble, fills registration data
-across repeat connections, removes AI notetakers, and creates cleaned and
-summary dataframes.
+`webinar/complete pipeline.txt`. It finds either the `Attendee Details` section
+or a compact Zoom attendee header, removes the report preamble, fills
+registration data across repeat connections, removes AI notetakers, and creates
+cleaned and summary dataframes.
 
 The attendee header row is read directly from each report, so its columns may
 be reordered and custom registration question headings may vary. The cleaned
@@ -279,15 +279,14 @@ The script uses `webinar/Regions.csv` and writes one Excel workbook per input to
 - `Summary`: one row per email address, with connection count, total session
   time, last leave time, attendance details, demographics, and region.
 
-After the individual workbooks are written, the pipeline rebuilds
-`webinar/output/master_webinar_summary.xlsx` from every generated `Summary`
-sheet in that folder. The master workbook contains one row per attendee per
-webinar and otherwise matches the normal `Summary` shape, with one additional
-`Webinar` column. This name comes from the workbook filename after removing the
-`Attendee report` marker and everything after it, including suffixes such as
-`(clean)`. Leading dates and the rest of the filename are preserved. Rebuilding
-it from the individual workbooks prevents duplicate rows on repeated runs while
-retaining older webinar workbooks that remain in `webinar/output/`.
+At the start of each run, the pipeline removes existing `.xlsx` files from
+`webinar/output/`. After the fresh individual workbooks are written, it rebuilds
+`webinar/output/master_webinar_summary.xlsx` from their `Summary` sheets. The
+master workbook contains one row per attendee per webinar and otherwise matches
+the normal `Summary` shape, with one additional `Webinar` column. This name
+comes from the workbook filename after removing the `Attendee report` marker
+and everything after it, including suffixes such as `(clean)`. Leading dates
+and the rest of the filename are preserved.
 
 Use `--regions path/to/Regions.csv` or `--output-folder path/to/output` to
 override either default.
