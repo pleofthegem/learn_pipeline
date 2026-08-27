@@ -170,6 +170,7 @@ def resolve_attendee_columns(columns: Iterable[str]) -> dict[str, str]:
 def attendee_rows_to_dataframe(
     rows: list[list[str]],
     header_index: int,
+    input_path: Path,
 ) -> pd.DataFrame:
     """Build the attendee dataframe and discard harmless trailing CSV fields."""
     source_header = [value.strip() for value in rows[header_index]]
@@ -179,17 +180,32 @@ def attendee_rows_to_dataframe(
         raise ValueError("Attendee column headings cannot be empty")
     if len(source_header) != len(set(source_header)):
         raise ValueError("Attendee column headings must be unique")
+    resolved_columns = resolve_attendee_columns(source_header)
+    country_column = resolved_columns.get("country_name")
+    country_is_last = (
+        country_column is not None and source_header[-1] == country_column
+    )
 
     attendee_rows: list[list[str]] = []
     for line_number, row in enumerate(rows[header_index + 1 :], header_index + 2):
         if not any(value.strip() for value in row):
             continue
 
+        if len(row) > len(source_header) and country_is_last:
+            country_parts = row[len(source_header) - 1 :]
+            while country_parts and not country_parts[-1].strip():
+                country_parts.pop()
+            row = row[: len(source_header) - 1] + [
+                ",".join(country_parts).strip()
+            ]
+
         if len(row) > len(source_header):
             extra_values = row[len(source_header) :]
             if any(value.strip() for value in extra_values):
                 raise ValueError(
-                    f"Unexpected data after attendee columns on line {line_number}"
+                    f"{input_path}: CSV line {line_number} has {len(row)} fields, "
+                    f"but the attendee header has {len(source_header)}. "
+                    f"Unexpected trailing values: {extra_values!r}"
                 )
             row = row[: len(source_header)]
 
@@ -214,7 +230,7 @@ def prepare_attendee_dataframe(input_path: Path) -> pd.DataFrame:
     """Remove the report preamble and apply the PowerShell cleanup steps."""
     rows = read_csv_rows(input_path)
     header_index = find_attendee_section(rows)
-    dataframe = attendee_rows_to_dataframe(rows, header_index)
+    dataframe = attendee_rows_to_dataframe(rows, header_index, input_path)
     columns = resolve_attendee_columns(dataframe.columns)
 
     dataframe["WebinarID"] = extract_webinar_id(rows)

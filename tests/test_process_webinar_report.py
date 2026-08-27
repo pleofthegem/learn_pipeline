@@ -401,6 +401,50 @@ def test_sparse_report_does_not_require_fixed_source_columns(tmp_path: Path) -> 
     assert summary.loc[0, "Country"] == ""
 
 
+def test_unexpected_csv_fields_report_file_line_and_values(tmp_path: Path) -> None:
+    report_path = tmp_path / "malformed report.csv"
+    rows = [
+        ["Attendee Report"],
+        ["Topic", "Webinar ID"],
+        ["Malformed Webinar", "123 987"],
+        ["Attendee Details"],
+        ["Email", "Display Name"],
+        ["person@example.com", "Example Person", "unexpected value"],
+    ]
+    with report_path.open("w", encoding="utf-8-sig", newline="") as csv_file:
+        csv.writer(csv_file).writerows(rows)
+
+    try:
+        prepare_attendee_dataframe(report_path)
+    except ValueError as error:
+        message = str(error)
+        assert str(report_path) in message
+        assert "CSV line 6" in message
+        assert "3 fields" in message
+        assert "header has 2" in message
+        assert "unexpected value" in message
+        assert "{line_number}" not in message
+    else:
+        raise AssertionError("Expected malformed attendee data to be rejected")
+
+
+def test_unquoted_comma_in_final_country_name_is_rejoined(tmp_path: Path) -> None:
+    report_path = tmp_path / "country comma.csv"
+    report_path.write_text(
+        "Attendee Report\n"
+        "Topic,Webinar ID\n"
+        "Country Test,555 123\n"
+        "Attendee Details\n"
+        "Email,Country Name\n"
+        "person@example.com,Congo, Democratic Republic of the\n",
+        encoding="utf-8-sig",
+    )
+
+    attendees = prepare_attendee_dataframe(report_path)
+
+    assert attendees.loc[0, "Country Name"] == "Congo, Democratic Republic of the"
+
+
 def test_prepare_attendee_dataframe_requires_attendee_section(tmp_path: Path) -> None:
     report_path = tmp_path / "invalid.csv"
     report_path.write_text("Topic,Webinar ID\nExample,123\n", encoding="utf-8")
