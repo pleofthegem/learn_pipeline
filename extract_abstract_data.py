@@ -10,6 +10,8 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
+from pdf_support import open_pdf
+
 AdditionalInfo = dict[str, str]
 RowValue = str | AdditionalInfo
 Row = dict[str, RowValue]
@@ -187,7 +189,7 @@ def extract_text_lines_from_pdf(path: Path) -> list[TextLine]:
             its text and largest font size.
     """
     lines: list[TextLine] = []
-    with fitz.open(path) as pdf:
+    with open_pdf(path) as pdf:
         for page in pdf:
             data = page.get_text("dict")
             for block in data["blocks"]:

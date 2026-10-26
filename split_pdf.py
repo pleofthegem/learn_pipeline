@@ -10,6 +10,8 @@ from pathlib import Path
 
 import fitz
 
+from pdf_support import open_pdf
+
 OUTPUT_ROOT = "output"
 # Default folder containing PDFs to check for combined abstract e-books.
 INPUT_FOLDER = f"{OUTPUT_ROOT}/abstracts_raw"
@@ -182,7 +184,7 @@ def split_pdf(
         list[dict[str, object]]: Metadata rows for generated PDFs. An empty list
             is returned when the PDF does not contain the expected TOC.
     """
-    with fitz.open(pdf_path) as pdf:
+    with open_pdf(pdf_path) as pdf:
         combined_info = combined_pdf_info(pdf)
         if combined_info is None:
             return []
@@ -252,7 +254,7 @@ def is_combined_pdf(pdf_path: Path) -> bool:
         bool: True when the PDF has a parseable combined-abstract TOC and the
             first listed abstract can be found later in the document.
     """
-    with fitz.open(pdf_path) as pdf:
+    with open_pdf(pdf_path) as pdf:
         return combined_pdf_info(pdf) is not None
 
 

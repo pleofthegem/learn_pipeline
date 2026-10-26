@@ -9,6 +9,8 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
+from pdf_support import open_pdf
+
 Row = dict[str, str]
 
 # Locations for saving
@@ -77,7 +79,7 @@ def extract_text_from_pdf(path: Path) -> str:
         str: Combined text extracted from all pages, separated by newlines.
     """
     text: list[str] = []
-    with fitz.open(path) as pdf:
+    with open_pdf(path) as pdf:
         for page in pdf:
             text.append(page.get_text())
     return "\n".join(text)

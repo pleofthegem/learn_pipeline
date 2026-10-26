@@ -48,6 +48,43 @@ The commands below assume your environment is active.
 
 ## Usage
 
+### Desktop app (Abstracts and Webinar reports)
+
+Open **Start IWA Learn.bat** on Windows or **Start IWA Learn.command** on
+macOS. On Linux, run the `.command` launcher or configure your file manager to
+run executable scripts. The launcher finds the project folder automatically.
+Python 3.10+ with Tkinter must already be installed. On Ubuntu/Debian, Tkinter
+is provided by `sudo apt install python3-tk`.
+
+The first launch creates `.venv` if needed and installs missing Python
+dependencies, which requires internet access. Subsequent launches work offline
+once dependencies are installed. Word inputs also require LibreOffice's
+`soffice` or `libreoffice` command on your PATH; PDF and webinar processing do
+not. This is a source-based launcher, not a packaged standalone executable.
+
+1. Choose **Abstracts** or **Webinar reports**.
+2. Drop files or a folder into the box, click the box to add files, or use
+   **Choose folder** to import supported files including subfolders. The input
+   list shows the current batch. Files are copied
+   into `input/` or `webinar/input/`. Existing inputs remain in the batch;
+   duplicate names receive a numbered suffix rather than being overwritten.
+3. Click **Run**. The loading bar and status show processing progress.
+4. Outputs appear in the list: raw PDFs and abstract metadata CSV for abstracts,
+   or all Excel workbooks for webinars. **Open output folder** opens the workflow's
+   output directory in Windows File Explorer on Windows, Finder on
+   macOS, or the default Linux file manager.
+
+The GUI uses the same fixed output folders and replacement behaviour as the
+terminal commands. Each run replaces generated outputs from the previous run.
+Manage the input folder in your file manager when starting a different batch.
+Drag-and-drop support uses `tkinterdnd2`, installed by the launcher. File and
+folder selection use Tkinter's native system dialogs; on Windows these are
+Windows dialogs. No PowerShell or C# helper is required. Run the app with Windows
+Python for the Windows desktop experience. Running it inside WSL uses Linux
+dialogs and the Linux file manager; Explorer-to-WSL drag-and-drop is not supported.
+
+If your environment is already set up, start with `python gui.py`.
+
 ### Full Pipeline: `main.py`
 
 Runs conversion, combined-PDF splitting, metadata extraction, and anonymisation.
@@ -123,6 +160,12 @@ the contents pages, distinguishes italic author lines from titles, and validates
 the printed-to-PDF page offset against body titles. Each abstract ends before
 the next listed abstract or session; the last ends at the final numbered page.
 PDF bookmarks are not used. These outputs use IDs such as `S1_A001`.
+
+PDF loading also handles empty embedded ICC colour profiles by using the
+matching device colour space in memory. This avoids the
+`cmsOpenProfileFromMem failed` error caused by the empty RGB profile in the
+HIC book. Source files remain unchanged; split PDFs inherit the fallback.
+Nonempty profiles and unrelated MuPDF diagnostics are left unchanged.
 
 ```bash
 python split_pdf.py
