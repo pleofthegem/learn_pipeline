@@ -3,14 +3,11 @@
 import shutil
 from pathlib import Path
 
-OUTPUT_ROOT = Path("output")
+from .config import ROOT, HANDOFF_FOLDER, INTERMEDIATE_FOLDER
+
 OUTPUT_FOLDERS = [
-    OUTPUT_ROOT / "abstract_csv",
-    OUTPUT_ROOT / "abstract_json",
-    OUTPUT_ROOT / "abstracts_aggregated",
-    OUTPUT_ROOT / "abstracts_clean",
-    OUTPUT_ROOT / "abstracts_raw",
-    OUTPUT_ROOT / "abstracts_split",
+    HANDOFF_FOLDER.relative_to(ROOT),
+    INTERMEDIATE_FOLDER.relative_to(ROOT),
 ]
 PRESERVED_NAMES = {".gitkeep"}
 
@@ -32,7 +29,7 @@ def clear_folder(folder: Path) -> int:
     return removed_count
 
 
-def clear_outputs(base_dir: Path = Path(".")) -> dict[str, int]:
+def clear_outputs(base_dir: Path = ROOT) -> dict[str, int]:
     """Clear generated output folders under `base_dir`."""
     return {
         str(folder): clear_folder(base_dir / folder)

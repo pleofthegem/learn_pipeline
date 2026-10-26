@@ -3,9 +3,8 @@ from pathlib import Path
 import fitz
 import pytest
 
-import convert_to_pdf
-from convert_to_pdf import (
-    AGGREGATED_FOLDER,
+from scripts import convert_to_pdf
+from scripts.convert_to_pdf import (
     PDF_OUTPUT_FOLDER,
     aggregate_files,
     alter_file_name,
@@ -33,7 +32,7 @@ def test_aggregate_files_flattens_nested_input_tree(tmp_path: Path) -> None:
     """Check that nested files keep only top-level folder context."""
     input_folder = tmp_path / "input"
     nested_folder = input_folder / "nested" / "deeper"
-    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    aggregate_dir = tmp_path / "aggregate"
     nested_folder.mkdir(parents=True)
 
     (input_folder / "root.pdf").write_text("root", encoding="utf-8")
@@ -62,7 +61,7 @@ def test_aggregate_files_renames_short_name_collisions(tmp_path: Path) -> None:
     input_folder = tmp_path / "input"
     first_folder = input_folder / "nested" / "first"
     second_folder = input_folder / "nested" / "second"
-    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    aggregate_dir = tmp_path / "aggregate"
     first_folder.mkdir(parents=True)
     second_folder.mkdir(parents=True)
     (first_folder / "paper.pdf").write_text("first", encoding="utf-8")
@@ -85,7 +84,7 @@ def test_aggregate_files_renames_short_name_collisions(tmp_path: Path) -> None:
 def test_aggregate_files_skips_unsupported_file_types(tmp_path: Path) -> None:
     """Check that unsupported files are not copied into the aggregate folder."""
     input_folder = tmp_path / "input"
-    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    aggregate_dir = tmp_path / "aggregate"
     input_folder.mkdir()
     (input_folder / "paper.pdf").write_text("pdf", encoding="utf-8")
     (input_folder / "talk_PPT.pdf").write_text("ppt pdf", encoding="utf-8")
@@ -108,7 +107,7 @@ def test_aggregate_files_skips_pdf_inside_presentation_folder(
     """Check that PDF presentations are skipped when the folder names reveal it."""
     input_folder = tmp_path / "input"
     presentation_dir = input_folder / "PRESENTATIONS"
-    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    aggregate_dir = tmp_path / "aggregate"
     presentation_dir.mkdir(parents=True)
     (presentation_dir / "talk.pdf").write_text("slides pdf", encoding="utf-8")
 
@@ -121,7 +120,7 @@ def test_aggregate_files_skips_pdf_inside_presentation_folder(
 def test_aggregate_files_skips_password_protected_pdf(tmp_path: Path) -> None:
     """Check that locked PDFs are not copied into the aggregate folder."""
     input_folder = tmp_path / "input"
-    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    aggregate_dir = tmp_path / "aggregate"
     input_folder.mkdir()
     write_encrypted_pdf(input_folder / "locked.pdf")
 
@@ -136,7 +135,7 @@ def test_aggregate_files_creates_missing_input_and_aggregate_folders(
 ) -> None:
     """Check that missing aggregation folders do not break an empty run."""
     input_folder = tmp_path / "missing_input"
-    aggregate_dir = tmp_path / AGGREGATED_FOLDER
+    aggregate_dir = tmp_path / "aggregate"
 
     copied = aggregate_files(input_folder, aggregate_dir)
 
@@ -148,7 +147,7 @@ def test_aggregate_files_creates_missing_input_and_aggregate_folders(
 def test_aggregate_files_skips_aggregate_folder_inside_input(tmp_path: Path) -> None:
     """Check that aggregation does not copy files from its own output folder."""
     input_folder = tmp_path / "input"
-    aggregate_dir = input_folder / AGGREGATED_FOLDER
+    aggregate_dir = input_folder / "aggregate"
     aggregate_dir.mkdir(parents=True)
     (input_folder / "root.pdf").write_text("root", encoding="utf-8")
     (aggregate_dir / "previous.pdf").write_text("previous", encoding="utf-8")

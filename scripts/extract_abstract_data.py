@@ -4,13 +4,15 @@ import argparse
 import csv
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from collections.abc import Callable
 import json
 import re
 from pathlib import Path
 
 import fitz  # PyMuPDF
 
-from pdf_support import open_pdf
+from . import extraction_rules as rules
+
 
 AdditionalInfo = dict[str, str]
 RowValue = str | AdditionalInfo
@@ -19,143 +21,21 @@ Row = dict[str, RowValue]
 
 @dataclass(frozen=True)
 class TextLine:
-    """One text line extracted from a PDF.
-
-    Attributes:
-        text: Text content of the line.
-        size: Largest font size used by the line.
-    """
+    """One text line extracted from a PDF."""
 
     text: str
     size: float
 
 
-OUTPUT_ROOT: str = "output"
-INPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstracts_raw"
-CSV_OUTPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstract_csv"
-JSON_OUTPUT_FOLDER: str = f"{OUTPUT_ROOT}/abstract_json"
-OUTPUT_CSV: str = "abstract_metadata.csv"
-OUTPUT_JSON: str = "abstract_metadata.json"
-CSV_ENCODING: str = "utf-8-sig"
-
-CSV_FIELDNAMES: list[str] = [
-    "filename",
-    "abstract_title",
-    "abstract_authors",
-    "abstract_description",
-    "abstract_keywords",
-    "additional_info",
-]
-
-SECTION_HEADINGS: set[str] = {
-    "abstract",
-    "abstract of the project",
-    "background",
-    "introduction",
-    "method",
-    "methods",
-    "methodology",
-    "results",
-    "results and discussion",
-    "discussion",
-    "conclusion",
-    "conclusions",
-    "keywords",
-    "key words",
-    "the background of research",
-    "nature of issue",
-    "findings and results",
-    "significance of the research",
-    "references",
-}
-PLACEHOLDER_LINES: set[str] = {
-    "this is a sample abstract title",
-    "author name author name initials then surnames separated by commas appear here",
-}
-WATER_BOARD_HEADER = "national water supply and drainage board sri lanka"
-WATER_BOARD_TITLE_NOISE_LINES: set[str] = {"qs"}
-
-KEYWORDS_RE = re.compile(
-    r"^\s*(?:keywords?|key\s+words?|index\s+terms)\s*[:.\-–—]?\s*(.*)$",
-    re.IGNORECASE,
-)
-ABSTRACT_RE = re.compile(
-    r"^\s*abstract(?:\s+of\s+the\s+project)?\s*[:.\-–—]?\s*(.*)$",
-    re.IGNORECASE,
-)
-BRACKETED_TITLE_NOISE_RE = re.compile(r"^\s*[\(\[\{][^\)\]\}]+[\)\]\}]\s*$")
-AUTHOR_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'.-]*")
-AUTHOR_INITIALS_ONLY_RE = re.compile(r"(?:[A-Z]\.?){1,10}")
-AUTHOR_MARKER_CHARS = "*†‡§"
-AUTHOR_MARKER_SUFFIX_RE = re.compile(
-    rf"(?<=[A-Za-z])\s*"
-    rf"(?:\d+(?:\s*,\s*\d+)*(?:\s*,\s*)?)?"
-    rf"[{re.escape(AUTHOR_MARKER_CHARS)}]+"
-    rf"(?=\s*(?:,|\.|$))"
-)
-AUTHOR_MARKER_SYMBOL_RE = re.compile(rf"[{re.escape(AUTHOR_MARKER_CHARS)}]+")
-AFFILIATION_KEYWORDS: set[str] = {
-    "affiliation",
-    "board",
-    "centre",
-    "center",
-    "college",
-    "department",
-    "division",
-    "faculty",
-    "institute",
-    "laboratory",
-    "ministry",
-    "national",
-    "organisation",
-    "organization",
-    "school",
-    "university",
-}
-EVENT_KEYWORD_RE = re.compile(
-    r"\b("
-    r"conference|congress|symposium|workshop|summit|forum|meeting|"
-    r"seminar|colloquium|exhibition|expo"
-    r")\b",
-    re.IGNORECASE,
-)
-MONTH_RE = re.compile(
-    r"\b("
-    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
-    r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|sept|oct(?:ober)?|"
-    r"nov(?:ember)?|dec(?:ember)?"
-    r")\b",
-    re.IGNORECASE,
-)
-YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
-PLACE_LABEL_RE = re.compile(
-    r"^\s*(?:venue|location|place|host city)\s*[:.\-–—]\s*(.+)$",
-    re.IGNORECASE,
-)
-INLINE_SECTION_RE = re.compile(
-    r"\b(?:"
-    r"abstract|background|introduction|methods?|methodology|results|"
-    r"discussion|conclusions?|references"
-    r")\s*[:.\-–—]",
-    re.IGNORECASE,
-)
-
-
 def parse_args() -> argparse.Namespace:
-    """Parse command-line options for metadata extraction.
-
-    Returns:
-        argparse.Namespace: Parsed CLI arguments. The namespace contains
-            `input_folder`, the directory of PDF abstracts to process. When it
-            is omitted, `INPUT_FOLDER` is used.
-    """
+    """Parse command-line options for metadata extraction."""
     parser = argparse.ArgumentParser(
         description="Extract metadata from abstract PDF files."
     )
     parser.add_argument(
         "input_folder",
         nargs="?",
-        default=INPUT_FOLDER,
+        default=rules.INPUT_FOLDER,
         help="Folder containing PDF abstracts.",
         type=str,
     )
@@ -179,17 +59,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def extract_text_lines_from_pdf(path: Path) -> list[TextLine]:
-    """Extract text lines and font sizes from every page of a PDF file.
-
-    Args:
-        path: Path to the PDF file to read.
-
-    Returns:
-        list[TextLine]: Extracted text lines in PDF order. Each line includes
-            its text and largest font size.
-    """
+    """Extract text lines and font sizes from every page of a PDF file."""
     lines: list[TextLine] = []
-    with open_pdf(path) as pdf:
+    with fitz.open(path) as pdf:
         for page in pdf:
             data = page.get_text("dict")
             for block in data["blocks"]:
@@ -205,67 +77,29 @@ def extract_text_lines_from_pdf(path: Path) -> list[TextLine]:
 
 
 def extract_text_from_pdf(path: Path) -> str:
-    """Extract text from every page of a PDF file.
-
-    Args:
-        path: Path to the PDF file to read.
-
-    Returns:
-        str: Combined text extracted from all pages, separated by newlines.
-    """
+    """Extract text from every page of a PDF file."""
     return "\n".join(line.text for line in extract_text_lines_from_pdf(path))
 
 
 def clean_lines(text: str) -> list[str]:
-    """Normalise extracted text into non-empty lines.
-
-    Args:
-        text: Raw text extracted from a PDF.
-
-    Returns:
-        list[str]: Non-empty text lines with surrounding whitespace removed.
-    """
+    """Normalise extracted text into non-empty lines."""
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
 def normalise_heading(line: str) -> str:
-    """Normalise a possible section heading for comparison.
-
-    Args:
-        line: Text line that may be a heading.
-
-    Returns:
-        str: Lowercase heading text with trailing colons removed and internal
-            whitespace collapsed.
-    """
+    """Normalise a possible section heading for comparison."""
     heading = line.split(":", 1)[0]
     heading = re.sub(r"\s+", " ", heading).strip(" :").lower()
     return heading
 
 
 def is_section_heading(line: str) -> bool:
-    """Check whether a line looks like a known abstract section heading.
-
-    Args:
-        line: Text line to classify.
-
-    Returns:
-        bool: `True` when the line is or starts with a known section heading,
-            otherwise `False`.
-    """
-    return normalise_heading(line) in SECTION_HEADINGS
+    """Check whether a line looks like a known abstract section heading."""
+    return normalise_heading(line) in rules.SECTION_HEADINGS
 
 
 def first_section_index(lines: list[str]) -> int | None:
-    """Find the first recognised section heading in extracted lines.
-
-    Args:
-        lines: Cleaned PDF text lines.
-
-    Returns:
-        int | None: Zero-based index of the first recognised section heading,
-            or `None` when no section heading is found.
-    """
+    """Find the first recognised section heading in extracted lines."""
     for index, line in enumerate(lines):
         if is_section_heading(line):
             return index
@@ -273,41 +107,25 @@ def first_section_index(lines: list[str]) -> int | None:
 
 
 def is_contact_line(line: str) -> bool:
-    """Check whether a line is contact information.
-
-    Args:
-        line: Text line to classify.
-
-    Returns:
-        bool: `True` when the line contains an email address or URL, otherwise
-            `False`.
-    """
+    """Check whether a line is contact information."""
     lower_line = line.lower()
     return "@" in line or "http://" in lower_line or "https://" in lower_line
 
 
 def comparable_text(text: str) -> str:
-    """Normalise text for loose title comparison.
-
-    Args:
-        text: Text to normalise.
-
-    Returns:
-        str: Lowercase alphanumeric text with punctuation removed and
-            whitespace collapsed.
-    """
+    """Normalise text for loose title comparison."""
     text = re.sub(r"[^A-Za-z0-9]+", " ", text).lower()
     return re.sub(r"\s+", " ", text).strip()
 
 
 def is_placeholder_line(line: str) -> bool:
     """Check whether a line is leftover template placeholder text."""
-    return comparable_text(line) in PLACEHOLDER_LINES
+    return comparable_text(line) in rules.PLACEHOLDER_LINES
 
 
 def is_bracketed_title_noise_line(line: str) -> bool:
     """Check whether a title-range line is only bracketed noise text."""
-    return bool(BRACKETED_TITLE_NOISE_RE.fullmatch(line))
+    return bool(rules.BRACKETED_TITLE_NOISE_RE.fullmatch(line))
 
 
 def is_title_noise_line(line: str) -> bool:
@@ -317,7 +135,7 @@ def is_title_noise_line(line: str) -> bool:
 
 def is_water_board_header_line(line: str) -> bool:
     """Check whether a line is the Water Board abstract header."""
-    return comparable_text(line) == WATER_BOARD_HEADER
+    return comparable_text(line) == rules.WATER_BOARD_HEADER
 
 
 def is_page_number_line(line: str) -> bool:
@@ -331,70 +149,48 @@ def is_ignored_water_board_title_line(line: str) -> bool:
         is_water_board_header_line(line)
         or is_page_number_line(line)
         or is_title_noise_line(line)
-        or comparable_text(line) in WATER_BOARD_TITLE_NOISE_LINES
+        or comparable_text(line) in rules.WATER_BOARD_TITLE_NOISE_LINES
     )
 
 
 def title_hint_from_filename(path: Path) -> str:
-    """Infer a title hint from filenames shaped like `Author - Title.pdf`.
-
-    Args:
-        path: PDF path being processed.
-
-    Returns:
-        str: The filename-derived title hint, or an empty string when the
-            filename does not contain a dash separator.
-    """
+    """Infer a title hint from filenames shaped like `Author - Title.pdf`."""
     if " - " not in path.stem:
         return ""
     return path.stem.split(" - ", 1)[1].strip()
 
 
 def pre_section_lines(lines: list[TextLine]) -> list[tuple[int, TextLine]]:
-    """Return lines that appear before the first recognised section.
-
-    Args:
-        lines: Text lines extracted from a PDF.
-
-    Returns:
-        list[tuple[int, TextLine]]: Pairs of original line index and line data
-            before the first recognised section heading.
-    """
+    """Return lines that appear before the first recognised section."""
     texts = [line.text for line in lines]
     section_index = first_section_index(texts)
-    limit = section_index if section_index is not None else min(len(lines), 12)
+    limit = section_index if section_index is not None else min(len(lines), rules.HEADER_LINE_LIMIT)
     return list(enumerate(lines[:limit]))
+
+
+def title_candidates(lines: list[TextLine]) -> list[tuple[int, TextLine]]:
+    """Keep pre-section text that can belong to a title."""
+    return [(index, line) for index, line in pre_section_lines(lines)
+            if not is_contact_line(line.text) and not is_title_noise_line(line.text)]
 
 
 def find_title_from_filename(
     lines: list[TextLine],
     path: Path,
 ) -> tuple[str, int] | None:
-    """Find a title by matching text against the PDF filename.
-
-    Args:
-        lines: Text lines extracted from a PDF.
-        path: PDF path being processed.
-
-    Returns:
-        tuple[str, int] | None: Matched title text and original line index of
-            the final title line, or `None` when no close match is found.
-    """
+    """Find a title by matching text against the PDF filename."""
     hint = title_hint_from_filename(path)
     if not hint:
         return None
 
     expected = comparable_text(hint)
-    candidates = [
-        (index, line) for index, line in pre_section_lines(lines)
-        if not is_contact_line(line.text) and not is_title_noise_line(line.text)
-    ]
+    candidates = title_candidates(lines)
     best_score = 0.0
     best_title = ""
     best_index = -1
 
     for start in range(len(candidates)):
-        for end in range(start, min(start + 3, len(candidates))):
+        for end in range(start, min(start + rules.TITLE_MAX_LINES, len(candidates))):
             window = candidates[start:end + 1]
             title = " ".join(line.text for _, line in window)
             score = SequenceMatcher(
@@ -407,31 +203,20 @@ def find_title_from_filename(
                 best_title = title
                 best_index = window[-1][0]
 
-    if best_score >= 0.75:
+    if best_score >= rules.TITLE_HINT_MIN_SCORE:
         return best_title, best_index
     return None
 
 
 def find_title_from_layout(lines: list[TextLine]) -> tuple[str, int]:
-    """Find a title from the largest text before the first section.
-
-    Args:
-        lines: Text lines extracted from a PDF.
-
-    Returns:
-        tuple[str, int]: Title text and original line index of the final title
-            line. The index is `-1` when no title line is found.
-    """
-    candidates = [
-        (index, line) for index, line in pre_section_lines(lines)
-        if not is_contact_line(line.text) and not is_title_noise_line(line.text)
-    ]
+    """Find a title from the largest text before the first section."""
+    candidates = title_candidates(lines)
     if not candidates:
         return "", -1
 
     largest_size = max(line.size for _, line in candidates)
     smallest_size = min(line.size for _, line in candidates)
-    if abs(largest_size - smallest_size) <= 0.1:
+    if abs(largest_size - smallest_size) <= rules.TITLE_FONT_TOLERANCE:
         index, line = candidates[0]
         return line.text, index
 
@@ -439,14 +224,14 @@ def find_title_from_layout(lines: list[TextLine]) -> tuple[str, int]:
     last_index = -1
 
     for index, line in candidates:
-        if abs(line.size - largest_size) > 0.1:
+        if abs(line.size - largest_size) > rules.TITLE_FONT_TOLERANCE:
             if title_lines:
                 break
             continue
 
         title_lines.append(line.text)
         last_index = index
-        if len(title_lines) == 3:
+        if len(title_lines) == rules.TITLE_MAX_LINES:
             break
 
     return " ".join(title_lines), last_index
@@ -482,21 +267,14 @@ def find_title_from_water_board_layout(
 
 
 def clean_author_line(line: str) -> str:
-    """Remove common author footnote markers from an author line.
-
-    Args:
-        line: Raw author line extracted from the PDF.
-
-    Returns:
-        str: Author line with simple superscript-style markers removed.
-    """
+    """Remove common author footnote markers from an author line."""
     return ", ".join(parse_author_names(line))
 
 
 def clean_author_name(name: str) -> str:
     """Remove footnote markers from one author name."""
-    name = AUTHOR_MARKER_SUFFIX_RE.sub("", name)
-    name = AUTHOR_MARKER_SYMBOL_RE.sub("", name)
+    name = rules.AUTHOR_MARKER_SUFFIX_RE.sub("", name)
+    name = rules.AUTHOR_MARKER_SYMBOL_RE.sub("", name)
     name = re.sub(r"\d+(?=\s|,|\.|$)", "", name)
     name = re.sub(r"\s+", " ", name)
     return name.strip(" .,;")
@@ -510,7 +288,7 @@ def normalise_author_separators(text: str) -> str:
 def is_initials_only(text: str) -> bool:
     """Check whether text is only author initials."""
     text = clean_author_name(text).replace(" ", "")
-    return bool(AUTHOR_INITIALS_ONLY_RE.fullmatch(text))
+    return bool(rules.AUTHOR_INITIALS_ONLY_RE.fullmatch(text))
 
 
 def parse_author_names(text: str) -> list[str]:
@@ -539,7 +317,7 @@ def parse_author_names(text: str) -> list[str]:
 def is_affiliation_text(text: str) -> bool:
     """Check whether text looks like institutional affiliation metadata."""
     lower_text = text.lower()
-    return any(keyword in lower_text for keyword in AFFILIATION_KEYWORDS)
+    return any(keyword in lower_text for keyword in rules.AFFILIATION_KEYWORDS)
 
 
 def is_probable_author_name(name: str) -> bool:
@@ -550,7 +328,7 @@ def is_probable_author_name(name: str) -> bool:
     if is_affiliation_text(cleaned):
         return False
 
-    words = AUTHOR_WORD_RE.findall(cleaned.replace(".", " "))
+    words = rules.AUTHOR_WORD_RE.findall(cleaned.replace(".", " "))
     if len(words) < 2 or len(words) > 10:
         return False
 
@@ -562,13 +340,7 @@ def is_probable_author_name(name: str) -> bool:
 
 def is_probable_author_line(line: str) -> bool:
     """Check whether a line is likely part of a comma-separated author list."""
-    if (
-        is_contact_line(line)
-        or is_placeholder_line(line)
-        or is_section_heading(line)
-        or KEYWORDS_RE.match(line)
-        or is_affiliation_text(line)
-    ):
+    if is_author_noise(line):
         return False
     has_marker_shape = has_author_marker_shape(line)
     if "," not in line and not has_marker_shape:
@@ -586,13 +358,7 @@ def is_probable_author_line(line: str) -> bool:
 
 def is_author_fragment_line(line: str) -> bool:
     """Check whether a line can be part of a wrapped author list."""
-    if (
-        is_contact_line(line)
-        or is_placeholder_line(line)
-        or is_section_heading(line)
-        or KEYWORDS_RE.match(line)
-        or is_affiliation_text(line)
-    ):
+    if is_author_noise(line):
         return False
 
     return (
@@ -604,69 +370,47 @@ def is_author_fragment_line(line: str) -> bool:
 
 def has_author_marker_shape(line: str) -> bool:
     """Check whether text contains a name-style author marker suffix."""
-    return bool(AUTHOR_MARKER_SUFFIX_RE.search(line))
+    return bool(rules.AUTHOR_MARKER_SUFFIX_RE.search(line))
+
+
+def is_author_noise(line: str) -> bool:
+    """Exclude section headings, affiliations, contacts and template text."""
+    return bool(is_contact_line(line) or is_placeholder_line(line)
+                or is_section_heading(line) or rules.KEYWORDS_RE.match(line)
+                or is_affiliation_text(line))
 
 
 def is_author_marker_fragment_line(line: str) -> bool:
-    """Check whether a line has a name-style author marker suffix."""
-    return (
-        has_author_marker_shape(line)
-        and not is_contact_line(line)
-        and not is_placeholder_line(line)
-        and not is_section_heading(line)
-        and not KEYWORDS_RE.match(line)
-        and not is_affiliation_text(line)
-    )
+    return has_author_marker_shape(line) and not is_author_noise(line)
 
 
 def find_author_start_index(
-    lines: list[TextLine],
-    limit: int,
-    min_index: int = 0,
+    lines: list[TextLine], limit: int, min_index: int = 0,
 ) -> int | None:
-    """Find where the pre-section author block starts."""
-    marker_start_index = find_author_marker_start_index(
-        lines,
-        limit,
-        min_index,
-    )
-    if marker_start_index is not None:
-        return marker_start_index
-
-    for index, line in enumerate(lines[min_index:limit], start=min_index):
-        text = line.text
-        if not is_probable_author_line(text):
-            continue
-
-        start_index = index
-        while (
-            start_index > 0
-            and is_initials_only(lines[start_index - 1].text)
-        ):
-            start_index -= 1
-        return start_index
-
-    return None
+    """Prefer explicit author markers, then a probable author list."""
+    marked = find_author_marker_start_index(lines, limit, min_index)
+    if marked is not None:
+        return marked
+    return author_block_start(lines, limit, min_index,
+                              lambda index: is_probable_author_line(lines[index].text))
 
 
 def find_author_marker_start_index(
-    lines: list[TextLine],
-    limit: int,
-    min_index: int = 0,
+    lines: list[TextLine], limit: int, min_index: int = 0,
 ) -> int | None:
-    """Find the first author block line with explicit author markers."""
-    for index, line in enumerate(lines[min_index:limit], start=min_index):
-        if not is_author_marker_start_candidate(lines, index):
-            continue
+    return author_block_start(lines, limit, min_index,
+                              lambda index: is_author_marker_start_candidate(lines, index))
 
-        start_index = index
-        while (
-            start_index > 0
-            and is_initials_only(lines[start_index - 1].text)
-        ):
-            start_index -= 1
-        return start_index
 
+def author_block_start(
+    lines: list[TextLine], limit: int, min_index: int, matches: Callable[[int], bool],
+) -> int | None:
+    """Find a matching author line and include any preceding wrapped initials."""
+    for index, _ in enumerate(lines[min_index:limit], start=min_index):
+        if matches(index):
+            while index > 0 and is_initials_only(lines[index - 1].text):
+                index -= 1
+            return index
     return None
 
 
@@ -684,37 +428,14 @@ def is_author_marker_start_candidate(
 
 
 def extract_title(lines: list[TextLine], path: Path) -> tuple[str, int]:
-    """Extract an abstract title from cleaned PDF lines.
-
-    Args:
-        lines: Text lines extracted from a PDF.
-        path: PDF path being processed.
-
-    Returns:
-        tuple[str, int]: The extracted title and the zero-based index of the
-            last line used for the title. The index is `-1` when no title is
-            found.
-    """
-    filename_title = find_title_from_filename(lines, path)
-    if filename_title:
-        return filename_title
-    water_board_title = find_title_from_water_board_layout(lines)
-    if water_board_title:
-        return water_board_title
-    return find_title_from_layout(lines)
+    """Return the title and its last line index (-1 if missing)."""
+    return (find_title_from_filename(lines, path)
+            or find_title_from_water_board_layout(lines)
+            or find_title_from_layout(lines))
 
 
 def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
-    """Extract authors from comma-separated pre-section author lists.
-
-    Args:
-        lines: Text lines extracted from a PDF.
-        title_end_index: Zero-based index of the final title line.
-
-    Returns:
-        str: Author names joined in one string, or an empty string when no
-            likely author line is found.
-    """
+    """Extract authors from comma-separated pre-section author lists."""
     texts = [line.text for line in lines]
     section_index = first_section_index(texts)
     limit = section_index if section_index is not None else len(lines)
@@ -760,28 +481,13 @@ def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
 
 
 def compact_info_text(text: str) -> str:
-    """Clean one extracted line for event metadata.
-
-    Args:
-        text: Raw PDF text to normalise.
-
-    Returns:
-        str: Text with repeated whitespace collapsed and edge punctuation
-            removed.
-    """
+    """Clean one extracted line for event metadata."""
     text = re.sub(r"\s+", " ", text)
     return text.strip(" ,;")
 
 
 def title_case_if_all_caps(text: str) -> str:
-    """Convert all-caps event/place text to display casing.
-
-    Args:
-        text: Event or place text extracted from a PDF header.
-
-    Returns:
-        str: Cleaned text, title-cased only when the source is mostly caps.
-    """
+    """Convert all-caps event/place text to display casing."""
     text = compact_info_text(text)
     letters = [char for char in text if char.isalpha()]
     if not letters:
@@ -797,7 +503,7 @@ def title_case_if_all_caps(text: str) -> str:
         lambda match: f"{match.group(1)}{match.group(2).lower()}",
         cased,
     )
-    for acronym in ("IWA", "AI", "UN", "UK", "USA"):
+    for acronym in rules.EVENT_ACRONYMS:
         cased = re.sub(
             rf"\b{re.escape(acronym.title())}\b",
             acronym,
@@ -809,33 +515,18 @@ def title_case_if_all_caps(text: str) -> str:
 
 
 def is_date_line(line: str) -> bool:
-    """Check whether a line looks like an event date line.
-
-    Args:
-        line: Candidate PDF header line.
-
-    Returns:
-        bool: `True` when the line contains a year plus either a month name or
-            a numeric date range.
-    """
-    if not YEAR_RE.search(line):
+    """Check whether a line looks like an event date line."""
+    if not rules.YEAR_RE.search(line):
         return False
-    return bool(MONTH_RE.search(line) or re.search(r"\d{1,2}\s*[-/]\s*\d{1,2}", line))
+    return bool(rules.MONTH_RE.search(line) or re.search(r"\d{1,2}\s*[-/]\s*\d{1,2}", line))
 
 
 def is_probable_place_line(line: str) -> bool:
-    """Check whether a short header line looks like a venue place.
-
-    Args:
-        line: Candidate PDF header line.
-
-    Returns:
-        bool: `True` for short city/country-style lines, otherwise `False`.
-    """
+    """Check whether a short header line looks like a venue place."""
     line = compact_info_text(line)
     if not line or is_contact_line(line) or is_section_heading(line):
         return False
-    if EVENT_KEYWORD_RE.search(line) or is_date_line(line):
+    if rules.EVENT_KEYWORD_RE.search(line) or is_date_line(line):
         return False
     if any(char.isdigit() for char in line):
         return False
@@ -847,16 +538,9 @@ def is_probable_place_line(line: str) -> bool:
 
 
 def extract_conference_name(header_lines: list[str]) -> str:
-    """Extract a conference/event name from PDF header lines.
-
-    Args:
-        header_lines: Leading PDF text lines before the abstract title.
-
-    Returns:
-        str: Conference name, or an empty string when none is found.
-    """
+    """Extract a conference/event name from PDF header lines."""
     for index, line in enumerate(header_lines):
-        if not EVENT_KEYWORD_RE.search(line):
+        if not rules.EVENT_KEYWORD_RE.search(line):
             continue
 
         name_lines = [line]
@@ -864,7 +548,7 @@ def extract_conference_name(header_lines: list[str]) -> str:
             if (
                 is_date_line(extra_line)
                 or (is_probable_place_line(extra_line) and "," in extra_line)
-                or PLACE_LABEL_RE.match(extra_line)
+                or rules.PLACE_LABEL_RE.match(extra_line)
             ):
                 break
             name_lines.append(extra_line)
@@ -874,16 +558,9 @@ def extract_conference_name(header_lines: list[str]) -> str:
 
 
 def extract_conference_place(header_lines: list[str]) -> str:
-    """Extract a conference place from PDF header lines.
-
-    Args:
-        header_lines: Leading PDF text lines before the abstract title.
-
-    Returns:
-        str: Event place, or an empty string when none is found.
-    """
+    """Extract a conference place from PDF header lines."""
     for line in header_lines:
-        match = PLACE_LABEL_RE.match(line)
+        match = rules.PLACE_LABEL_RE.match(line)
         if match:
             return title_case_if_all_caps(match.group(1))
 
@@ -905,21 +582,10 @@ def extract_additional_info(
     title_end_index: int,
     default_additional_info: AdditionalInfo | None = None,
 ) -> AdditionalInfo:
-    """Extract conference name and place from PDF header text.
-
-    Args:
-        lines: Text lines extracted from a PDF.
-        title_end_index: Index of the final line used for the title.
-        default_additional_info: Batch-level fallback metadata used for any
-            fields missing from the PDF itself.
-
-    Returns:
-        AdditionalInfo: Dict with `name` and `place` keys. Values are empty
-            strings when no reliable metadata is found.
-    """
+    """Extract conference name and place from PDF header text."""
     texts = [line.text for line in lines]
     section_index = first_section_index(texts)
-    limits = [min(len(texts), 12)]
+    limits = [min(len(texts), rules.HEADER_LINE_LIMIT)]
     if section_index is not None:
         limits.append(section_index)
     if title_end_index > 0:
@@ -944,16 +610,7 @@ def default_additional_info_from_values(
     name: str | None = None,
     place: str | None = None,
 ) -> AdditionalInfo | None:
-    """Build optional batch-level conference metadata from CLI values.
-
-    Args:
-        name: Optional conference name.
-        place: Optional conference place.
-
-    Returns:
-        AdditionalInfo | None: Normalised metadata when at least one value was
-            supplied, otherwise `None`.
-    """
+    """Build optional batch-level conference metadata from CLI values."""
     additional_info = {
         "name": compact_info_text(name or ""),
         "place": compact_info_text(place or ""),
@@ -964,30 +621,10 @@ def default_additional_info_from_values(
 
 
 def standardise_keywords(keywords: str) -> str:
-    """Normalise keyword separators to commas.
-
-    Args:
-        keywords: Raw keyword text extracted from a PDF.
-
-    Returns:
-        str: Keyword text split on the detected separator and joined with
-            `, `. Semicolon is used for splitting when present, otherwise comma
-            is used.
-    """
-    keywords = keywords.strip()
-    if ";" in keywords:
-        separator = ";"
-    elif "," in keywords:
-        separator = ","
-    else:
-        return clean_keyword_part(keywords)
-
-    parts = [
-        clean_keyword_part(part)
-        for part in keywords.split(separator)
-        if clean_keyword_part(part)
-    ]
-    return ", ".join(parts)
+    """Normalise separators, giving semicolons precedence over commas."""
+    separator = ";" if ";" in keywords else ","
+    parts = (clean_keyword_part(part) for part in keywords.split(separator))
+    return ", ".join(part for part in parts if part)
 
 
 def clean_keyword_part(keyword: str) -> str:
@@ -998,7 +635,7 @@ def clean_keyword_part(keyword: str) -> str:
 
 def text_before_inline_section(text: str) -> str:
     """Return text before an inline section heading, if one is present."""
-    match = INLINE_SECTION_RE.search(text)
+    match = rules.INLINE_SECTION_RE.search(text)
     if not match:
         return text.strip()
     return text[:match.start()].strip()
@@ -1019,18 +656,9 @@ def is_keyword_continuation_text(text: str) -> bool:
 
 
 def extract_keywords_from_text_lines(lines: list[TextLine]) -> str:
-    """Extract keywords from a `Keywords:` or `Key words:` block.
-
-    Args:
-        lines: Text lines extracted from a PDF.
-
-    Returns:
-        str: Keyword text after the heading, including continuation lines up
-            to the next section heading. Returns an empty string when no
-            keyword block is found.
-    """
+    """Extract keywords from a `Keywords:` or `Key words:` block."""
     for index, line in enumerate(lines):
-        match = KEYWORDS_RE.match(line.text)
+        match = rules.KEYWORDS_RE.match(line.text)
         if not match:
             continue
 
@@ -1043,7 +671,7 @@ def extract_keywords_from_text_lines(lines: list[TextLine]) -> str:
             text = continuation.text.strip()
             if is_section_heading(text):
                 break
-            if continuation.size > line.size + 0.5:
+            if continuation.size > line.size + rules.KEYWORD_FONT_TOLERANCE:
                 break
 
             text = text_before_inline_section(text)
@@ -1065,19 +693,9 @@ def extract_keywords(lines: list[str]) -> str:
 
 
 def abstract_start(lines: list[str]) -> tuple[int, str]:
-    """Find where the abstract description should begin.
-
-    Args:
-        lines: Cleaned PDF text lines.
-
-    Returns:
-        tuple[int, str]: The zero-based index where description text starts and
-            any description text found on the same line as the abstract
-            heading. If no explicit abstract heading is found, the first known
-            section heading is used as a fallback.
-    """
+    """Find where the abstract description should begin."""
     for index, line in enumerate(lines):
-        match = ABSTRACT_RE.match(line)
+        match = rules.ABSTRACT_RE.match(line)
         if match:
             return index + 1, match.group(1).strip()
 
@@ -1088,23 +706,14 @@ def abstract_start(lines: list[str]) -> tuple[int, str]:
 
 
 def extract_description(lines: list[str]) -> str:
-    """Extract the abstract description text.
-
-    Args:
-        lines: Cleaned PDF text lines.
-
-    Returns:
-        str: Description text, usually the text after `Abstract:` up to
-            `Keywords:` or the next recognised section heading. Returns an
-            empty string when no description can be inferred.
-    """
+    """Extract the abstract description text."""
     start_index, same_line_text = abstract_start(lines)
     description_lines: list[str] = []
     if same_line_text:
         description_lines.append(same_line_text)
 
     for line in lines[start_index:]:
-        if KEYWORDS_RE.match(line):
+        if rules.KEYWORDS_RE.match(line):
             break
         if description_lines and is_section_heading(line):
             break
@@ -1117,21 +726,7 @@ def process_pdf(
     path: Path,
     default_additional_info: AdditionalInfo | None = None,
 ) -> Row:
-    """Extract metadata from one PDF abstract.
-
-    Args:
-        path: Path to the PDF file to process.
-        default_additional_info: Batch-level fallback metadata for PDFs that
-            do not contain conference name/place text.
-
-    Returns:
-        Row: Dictionary containing `filename`, `abstract_title`,
-            `abstract_authors`, `abstract_description`, `abstract_keywords`,
-            and `additional_info`.
-
-    Raises:
-        ValueError: If `path` does not have a PDF suffix.
-    """
+    """Extract metadata from one PDF abstract."""
     if path.suffix.lower() != ".pdf":
         raise ValueError(f"Unsupported file type: {path.suffix}")
 
@@ -1153,15 +748,7 @@ def process_pdf(
 
 
 def pdf_input_files(input_dir: Path) -> list[Path]:
-    """List PDF files from an input directory.
-
-    Args:
-        input_dir: Directory to scan for PDF input files.
-
-    Returns:
-        list[Path]: Sorted PDF file paths. The input directory is created when
-            missing, allowing an empty pipeline step to complete cleanly.
-    """
+    """List PDF files from an input directory."""
     input_dir.mkdir(parents=True, exist_ok=True)
     return sorted(
         path for path in input_dir.iterdir()
@@ -1170,19 +757,10 @@ def pdf_input_files(input_dir: Path) -> list[Path]:
 
 
 def extract_abstract_metadata(
-    input_folder: Path = Path(INPUT_FOLDER),
+    input_folder: Path = Path(rules.INPUT_FOLDER),
     default_additional_info: AdditionalInfo | None = None,
 ) -> list[Row]:
-    """Extract abstract metadata from every PDF in a folder.
-
-    Args:
-        input_folder: Directory containing PDF abstracts.
-        default_additional_info: Batch-level fallback metadata for PDFs that
-            do not contain conference name/place text.
-
-    Returns:
-        list[Row]: Metadata rows sorted by PDF filename.
-    """
+    """Extract abstract metadata from every PDF in a folder."""
     return [
         process_pdf(path, default_additional_info)
         for path in pdf_input_files(Path(input_folder))
@@ -1190,19 +768,10 @@ def extract_abstract_metadata(
 
 
 def write_csv(rows: list[Row], csv_path: Path) -> None:
-    """Write metadata rows to a CSV file.
-
-    Args:
-        rows: Metadata rows to write using `CSV_FIELDNAMES`.
-        csv_path: Destination CSV path. The parent directory is created if
-            needed.
-
-    Returns:
-        None.
-    """
+    """Write metadata rows to a CSV file."""
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    with csv_path.open("w", newline="", encoding=CSV_ENCODING) as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+    with csv_path.open("w", newline="", encoding=rules.CSV_ENCODING) as f:
+        writer = csv.DictWriter(f, fieldnames=rules.CSV_FIELDNAMES)
         writer.writeheader()
         for row in rows:
             writer.writerow({
@@ -1216,16 +785,7 @@ def write_csv(rows: list[Row], csv_path: Path) -> None:
 
 
 def write_json(rows: list[Row], json_path: Path) -> None:
-    """Write metadata rows to a JSON file.
-
-    Args:
-        rows: Metadata rows to serialise as JSON.
-        json_path: Destination JSON path. The parent directory is created if
-            needed.
-
-    Returns:
-        None.
-    """
+    """Write metadata rows to a JSON file."""
     json_path.parent.mkdir(parents=True, exist_ok=True)
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False, indent=2)
@@ -1233,23 +793,12 @@ def write_json(rows: list[Row], json_path: Path) -> None:
 
 
 def extract_abstract_data(
-    input_folder: Path = Path(INPUT_FOLDER),
-    csv_path: Path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV,
-    json_path: Path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON,
+    input_folder: Path = Path(rules.INPUT_FOLDER),
+    csv_path: Path = Path(rules.CSV_OUTPUT_FOLDER) / rules.OUTPUT_CSV,
+    json_path: Path = Path(rules.JSON_OUTPUT_FOLDER) / rules.OUTPUT_JSON,
     default_additional_info: AdditionalInfo | None = None,
 ) -> list[Row]:
-    """Extract abstract metadata and write CSV and JSON outputs.
-
-    Args:
-        input_folder: Directory containing PDF abstracts.
-        csv_path: Destination CSV metadata path.
-        json_path: Destination JSON metadata path.
-        default_additional_info: Batch-level fallback metadata for PDFs that
-            do not contain conference name/place text.
-
-    Returns:
-        list[Row]: Metadata rows extracted from the input PDFs.
-    """
+    """Extract abstract metadata and write CSV and JSON outputs."""
     rows = extract_abstract_metadata(
         Path(input_folder),
         default_additional_info,
@@ -1260,14 +809,10 @@ def extract_abstract_data(
 
 
 def main() -> None:
-    """Run abstract metadata extraction from the CLI.
-
-    Returns:
-        None.
-    """
+    """Run abstract metadata extraction from the CLI."""
     args = parse_args()
-    csv_path = Path(CSV_OUTPUT_FOLDER) / OUTPUT_CSV
-    json_path = Path(JSON_OUTPUT_FOLDER) / OUTPUT_JSON
+    csv_path = Path(rules.CSV_OUTPUT_FOLDER) / rules.OUTPUT_CSV
+    json_path = Path(rules.JSON_OUTPUT_FOLDER) / rules.OUTPUT_JSON
     rows = extract_abstract_data(
         input_folder=Path(args.input_folder),
         csv_path=csv_path,

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from webinar.process_webinar_report import (
+from scripts.process_webinar_report import (
     CLEAN_SHEET_NAME,
     MASTER_COLUMNS,
     MASTER_SHEET_NAME,

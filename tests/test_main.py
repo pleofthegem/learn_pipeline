@@ -1,136 +1,107 @@
+import csv
+import json
 from pathlib import Path
+import shutil
 
-import main as pipeline
+import pytest
+
+from scripts import main as pipeline
+from scripts.config import INPUT_FOLDER, OUTPUT_ROOT
+from test_split_pdf import write_combined_pdf
 
 
-def test_run_pipeline_calls_each_module_api_in_order(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """Check that the top-level pipeline delegates to module APIs in order."""
-    calls: list[str] = []
-    input_folder = tmp_path / "input"
-    output_root = tmp_path / "output"
-    aggregate_folder = output_root / "abstracts_aggregated"
-    raw_folder = output_root / "abstracts_raw"
-    split_folder = output_root / "abstracts_split"
-    clean_folder = output_root / "abstracts_clean"
-    extract_csv_path = output_root / "abstract_csv" / "abstract_metadata.csv"
-    extract_json_path = output_root / "abstract_json" / "abstract_metadata.json"
-    anonymise_csv_path = output_root / "abstract_csv" / "anonymised_abstracts.csv"
-    anonymise_json_path = output_root / "abstract_json" / "anonymised_abstracts.json"
+def test_minimal_bundle_contains_pdfs_and_matching_metadata(sample_input_dir, tmp_path, monkeypatch):
+    output = tmp_path / "output"
+    # Conversion and anonymisation must not run for a default PDF batch.
+    def unexpected(*args, **kwargs):
+        pytest.fail("Optional processing ran in minimal mode")
+    monkeypatch.setattr(pipeline.convert_to_pdf, "convert_inputs_to_pdfs", unexpected)
+    monkeypatch.setattr(pipeline.anonymise_abstracts, "anonymise_pdf_abstracts", unexpected)
+    before = {p.name: p.read_bytes() for p in sample_input_dir.iterdir()}
+    counts = pipeline.run_pipeline(sample_input_dir, output, default_additional_info={"name": "Conference", "place": "London"})
+    bundle = output / "handoff_bundle"
+    with (bundle / "abstract_metadata.csv").open(encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert {row['filename'] for row in rows} == {p.name for p in (bundle / "pdfs").iterdir()}
+    assert len(rows) == counts['metadata_rows'] == 2
+    assert counts['anonymised_pdfs'] == 0
+    assert json.loads(rows[0]['additional_info']) == {"name": "Conference", "place": "London"}
+    assert not (output / "intermediate_outputs/abstracts_clean").exists()
+    assert {p.name: p.read_bytes() for p in sample_input_dir.iterdir()} == before
+    assert {p.name for p in output.iterdir()} == {"handoff_bundle", "intermediate_outputs"}
 
-    def fake_clear_folders(folders: list[Path]) -> dict[str, int]:
-        calls.append("clear")
-        assert folders == [
-            aggregate_folder,
-            raw_folder,
-            split_folder,
-            clean_folder,
-            extract_csv_path.parent,
-            extract_json_path.parent,
-            anonymise_csv_path.parent,
-            anonymise_json_path.parent,
-        ]
-        return {str(folder): 0 for folder in folders}
 
-    def fake_convert_inputs_to_pdfs(
-        input_folder: Path,
-        aggregate_dir: Path,
-        output_dir: Path,
-    ) -> tuple[list[Path], list[Path]]:
-        calls.append("convert")
-        assert input_folder == tmp_path / "input"
-        assert aggregate_dir == aggregate_folder
-        assert output_dir == raw_folder
-        return [aggregate_folder / "paper.docx"], [raw_folder / "paper.pdf"]
+def test_combined_source_is_split_in_bundle_and_original_is_preserved(tmp_path):
+    source = tmp_path / "input"
+    source.mkdir()
+    book = source / "book.pdf"
+    write_combined_pdf(book)
+    original = book.read_bytes()
+    output = tmp_path / "output"
+    counts = pipeline.run_pipeline(source, output)
+    pdfs = output / "handoff_bundle/pdfs"
+    assert counts['split_abstracts'] == counts['metadata_rows'] == 2
+    assert len(list(pdfs.glob('*.pdf'))) == 2
+    assert not (pdfs / 'book.pdf').exists()
+    assert book.read_bytes() == original
+    assert (output / 'intermediate_outputs/abstracts_split/split_abstracts.csv').exists()
 
-    def fake_split_combined_pdfs(
-        input_folder: Path,
-        output_folder: Path,
-        staging_folder: Path,
-    ) -> list[dict[str, object]]:
-        calls.append("split")
-        assert input_folder == raw_folder
-        assert output_folder == raw_folder
-        assert staging_folder == split_folder
-        return [{"output_file": "split.pdf"}]
 
-    def fake_extract_abstract_data(
-        input_folder: Path,
-        csv_path: Path,
-        json_path: Path,
-        default_additional_info: dict[str, str] | None = None,
-    ) -> list[dict[str, str]]:
-        calls.append("extract")
-        assert input_folder == raw_folder
-        assert csv_path == extract_csv_path
-        assert json_path == extract_json_path
-        assert default_additional_info == {
-            "name": "Default conference",
-            "place": "Default place",
-        }
-        return [{"filename": "paper.pdf"}]
+def test_full_mode_converts_word_and_exports_anonymised_text(sample_input_dir, tmp_path, monkeypatch):
+    output = tmp_path / 'output'
+    monkeypatch.setattr(pipeline.convert_to_pdf, 'office_converter_command', lambda: 'soffice')
+    def convert_word(path, output_dir):
+        assert path.suffix == '.docx'
+        target = output_dir / f'{path.stem}.pdf'
+        shutil.copy2(sample_input_dir / 'abstract_001.pdf', target)
+        return target
+    monkeypatch.setattr(pipeline.convert_to_pdf, 'convert_office_to_pdf', convert_word)
+    counts = pipeline.run_pipeline(sample_input_dir, output, full=True)
+    assert counts['converted_pdfs'] == counts['metadata_rows'] == counts['anonymised_pdfs'] == 3
+    intermediate = output / 'intermediate_outputs'
+    assert len(list((intermediate / 'abstracts_clean').glob('*.txt'))) == 3
+    assert '[EMAIL_REMOVED]' in next((intermediate / 'abstracts_clean').glob('*.txt')).read_text()
+    assert (intermediate / 'csv/anonymised_abstracts.csv').exists()
+    assert (intermediate / 'json/anonymised_abstracts.json').exists()
+    # A later minimal run removes full-mode leftovers, but retains original Word files.
+    pipeline.run_pipeline(sample_input_dir, output)
+    assert not (intermediate / 'abstracts_clean').exists()
+    assert (sample_input_dir / 'abstract_003.docx').exists()
 
-    def fake_anonymise_pdf_abstracts(
-        input_dir: Path,
-        output_dir: Path,
-        csv_path: Path,
-        json_path: Path,
-    ) -> list[dict[str, str]]:
-        calls.append("anonymise")
-        assert input_dir == raw_folder
-        assert output_dir == clean_folder
-        assert csv_path == anonymise_csv_path
-        assert json_path == anonymise_json_path
-        return [{"file_name": "paper.pdf"}]
 
-    monkeypatch.setattr(
-        pipeline.convert_to_pdf,
-        "convert_inputs_to_pdfs",
-        fake_convert_inputs_to_pdfs,
-    )
-    monkeypatch.setattr(
-        pipeline.split_pdf,
-        "split_combined_pdfs",
-        fake_split_combined_pdfs,
-    )
-    monkeypatch.setattr(
-        pipeline.extract_abstract_data,
-        "extract_abstract_data",
-        fake_extract_abstract_data,
-    )
-    monkeypatch.setattr(
-        pipeline.anonymise_abstracts,
-        "anonymise_pdf_abstracts",
-        fake_anonymise_pdf_abstracts,
-    )
-    monkeypatch.setattr(
-        pipeline.clear_outputs,
-        "clear_folders",
-        fake_clear_folders,
-    )
+@pytest.mark.parametrize('relation', ['same', 'output_inside_input', 'input_inside_output'])
+def test_overlapping_folders_are_rejected_before_deletion(tmp_path, relation):
+    source = tmp_path / 'input'
+    output = {'same': source, 'output_inside_input': source / 'output', 'input_inside_output': tmp_path}[relation]
+    source.mkdir()
+    sentinel = source / 'keep.pdf'
+    sentinel.write_bytes(b'preserve')
+    with pytest.raises(ValueError, match='separate'):
+        pipeline.run_pipeline(source, output)
+    assert sentinel.read_bytes() == b'preserve'
 
-    counts = pipeline.run_pipeline(
-        input_folder=input_folder,
-        aggregate_folder=aggregate_folder,
-        raw_folder=raw_folder,
-        split_folder=split_folder,
-        clean_output_folder=clean_folder,
-        extract_csv_path=extract_csv_path,
-        extract_json_path=extract_json_path,
-        anonymise_csv_path=anonymise_csv_path,
-        anonymise_json_path=anonymise_json_path,
-        default_additional_info={
-            "name": "Default conference",
-            "place": "Default place",
-        },
-    )
 
-    assert calls == ["clear", "convert", "split", "extract", "anonymise"]
-    assert counts == {
-        "converted_pdfs": 1,
-        "split_abstracts": 1,
-        "metadata_rows": 1,
-        "anonymised_pdfs": 1,
-    }
+def test_invalid_input_does_not_clear_previous_bundle(tmp_path):
+    output = tmp_path / 'output'
+    bundle = output / 'handoff_bundle'
+    bundle.mkdir(parents=True)
+    previous = bundle / 'abstract_metadata.csv'
+    previous.write_text('previous results')
+    missing = tmp_path / 'missing'
+    with pytest.raises(ValueError, match='does not exist'):
+        pipeline.run_pipeline(missing, output)
+    missing.mkdir()
+    with pytest.raises(ValueError, match='No supported'):
+        pipeline.run_pipeline(missing, output)
+    assert previous.read_text() == 'previous results'
+
+
+def test_cli_defaults_are_independent_of_working_directory(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr('sys.argv', ['pipeline'])
+    args = pipeline.parse_args()
+    assert args.input_folder == INPUT_FOLDER
+    assert args.output_folder == OUTPUT_ROOT
+    assert args.full is False
+    monkeypatch.setattr('sys.argv', ['pipeline', '--full'])
+    assert pipeline.parse_args().full is True

@@ -2,8 +2,8 @@
 from pathlib import Path
 import shutil
 
-ROOT = Path(__file__).resolve().parent
-SUFFIXES = {"abstracts": {".pdf", ".doc", ".docx"}, "webinar": {".csv"}}
+from scripts.config import ROOT
+SUFFIXES = {"abstracts": {".pdf"}, "webinar": {".csv"}}
 
 
 def collect_inputs(mode: str, paths: list[Path]) -> list[Path]:
@@ -54,11 +54,11 @@ def current_inputs(mode):
 
 
 def useful_outputs(mode):
-    output = ROOT / ("output" if mode == "abstracts" else "webinar/output")
+    output = ROOT / ("output/handoff_bundle" if mode == "abstracts" else "webinar/output")
     if mode == "webinar":
         return sorted(output.glob("*.xlsx"))
-    metadata = output / "abstract_csv/abstract_metadata.csv"
-    return ([metadata] if metadata.exists() else []) + sorted((output / "abstracts_raw").glob("*.pdf"))
+    metadata = output / "abstract_metadata.csv"
+    return ([metadata] if metadata.exists() else []) + sorted(p for p in (output / "pdfs").glob("*") if p.is_file() and p.suffix.lower() == ".pdf")
 
 
 def run_job(mode):
@@ -69,22 +69,10 @@ def run_job(mode):
         raise ValueError("Drop some files into the input box first.")
     result = ROOT / ("output" if mode == "abstracts" else "webinar/output")
     if mode == "abstracts":
-        import main as pipeline
-        if any(p.suffix.lower() in {".doc", ".docx"} for p in files):
-            pipeline.convert_to_pdf.office_converter_command()
-        counts = pipeline.run_pipeline(
-            input_folder=folder,
-            aggregate_folder=result / "abstracts_aggregated",
-            raw_folder=result / "abstracts_raw",
-            split_folder=result / "abstracts_split",
-            clean_output_folder=result / "abstracts_clean",
-            extract_csv_path=result / "abstract_csv/abstract_metadata.csv",
-            extract_json_path=result / "abstract_json/abstract_metadata.json",
-            anonymise_csv_path=result / "abstract_csv/anonymised_abstracts.csv",
-            anonymise_json_path=result / "abstract_json/anonymised_abstracts.json",
-        )
+        from scripts.main import run_pipeline
+        counts = run_pipeline(folder, result)
         return f"Done · {counts['metadata_rows']} abstracts extracted."
-    from webinar import process_webinar_report as webinar
+    from scripts import process_webinar_report as webinar
     files = webinar.find_input_files(folder)
     webinar.clear_output_workbooks(result)
     used = {webinar.MASTER_WORKBOOK_NAME.casefold()}

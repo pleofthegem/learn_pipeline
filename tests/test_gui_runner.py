@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-import gui_runner as runner
+from gui import runner
 
 
 def test_drop_preserves_sources_and_handles_duplicate_names(tmp_path, monkeypatch):
@@ -33,9 +33,9 @@ def test_abstract_fixed_outputs(tmp_path, monkeypatch, sample_pdf_path):
     runner.store_inputs("abstracts", [sample_pdf_path])
     runner.run_job("abstracts")
     outputs = runner.useful_outputs("abstracts")
-    assert tmp_path / "output/abstract_csv/abstract_metadata.csv" in outputs
-    assert tmp_path / "output/abstracts_raw/abstract_001.pdf" in outputs
-    assert all("abstract_json" not in str(p) for p in outputs)
+    assert tmp_path / "output/handoff_bundle/abstract_metadata.csv" in outputs
+    assert tmp_path / "output/handoff_bundle/pdfs/abstract_001.pdf" in outputs
+    assert all("intermediate_outputs" not in str(p) for p in outputs)
 
 
 def test_webinar_fixed_outputs(tmp_path, monkeypatch):

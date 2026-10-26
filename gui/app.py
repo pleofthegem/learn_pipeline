@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from tkinterdnd2 import TkinterDnD, DND_FILES, COPY, REFUSE_DROP
 
-from gui_runner import ROOT, input_folder, store_inputs, useful_outputs, run_job, current_inputs
+from .runner import ROOT, input_folder, store_inputs, useful_outputs, run_job, current_inputs
 
 
 class Writer:
@@ -36,7 +36,7 @@ class Workflow(ttk.Frame):
         input_folder(mode).mkdir(parents=True, exist_ok=True)
         title = "Abstracts" if mode == "abstracts" else "Webinar reports"
         ttk.Label(self, text=title, style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        types = "PDF and Word files" if mode == "abstracts" else "Zoom attendee CSV files"
+        types = "PDF files" if mode == "abstracts" else "Zoom attendee CSV files"
         self.drop = tk.Label(self, text=f"Drop {types} or a folder here\n\nor click to add files",
                              background="#eaf3f7", foreground="#17596e", font=("Segoe UI", 13),
                              relief="flat", highlightthickness=1, highlightbackground="#aacbd7",
@@ -70,7 +70,7 @@ class Workflow(ttk.Frame):
         self.progress.pack(side="left", fill="x", expand=True, padx=(16, 0))
         self.status = tk.StringVar(value="Ready. Running replaces the previous outputs.")
         ttk.Label(self, textvariable=self.status, wraplength=620).grid(row=5, column=0, sticky="w")
-        output = "output/abstracts_raw + output/abstract_csv/abstract_metadata.csv" if mode == "abstracts" else "webinar/output"
+        output = "output/handoff_bundle" if mode == "abstracts" else "webinar/output"
         output_bar = ttk.Frame(self)
         output_bar.grid(row=6, column=0, sticky="ew", pady=(22, 8))
         output_bar.columnconfigure(0, weight=1)
@@ -89,7 +89,7 @@ class Workflow(ttk.Frame):
         self.refresh()
 
     def open_output_folder(self):
-        folder = ROOT / ("output" if self.mode == "abstracts" else "webinar/output")
+        folder = ROOT / ("output/handoff_bundle" if self.mode == "abstracts" else "webinar/output")
         try:
             folder.mkdir(parents=True, exist_ok=True)
             if sys.platform == "win32":
@@ -139,7 +139,7 @@ class Workflow(ttk.Frame):
                 )
                 paths = [path] if path else []
             else:
-                patterns = "*.pdf *.PDF *.doc *.DOC *.docx *.DOCX" if self.mode == "abstracts" else "*.csv *.CSV"
+                patterns = "*.pdf *.PDF" if self.mode == "abstracts" else "*.csv *.CSV"
                 paths = filedialog.askopenfilenames(parent=self, filetypes=[("Input files", patterns)])
             if paths:
                 self.add(paths)

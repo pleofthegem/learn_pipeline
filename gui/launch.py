@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
     if check.returncode:
         print("Installing dependencies. This first setup needs internet access…", flush=True)
         subprocess.run([str(python), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")], check=True)
-    return subprocess.call([str(python), str(ROOT / "gui.py")], cwd=ROOT)
+    return subprocess.call([str(python), "-m", "gui"], cwd=ROOT)
 
 
 if __name__ == "__main__":
