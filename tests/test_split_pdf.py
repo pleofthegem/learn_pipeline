@@ -586,3 +586,89 @@ def test_split_folder_rejects_staging_folder_as_output_folder(
             output_folder=output_folder,
             staging_folder=output_folder,
         )
+
+
+
+def write_session_contents_pdf(path: Path, *, book=True, wrong_titles=False, duplicate=False):
+    """Two printed contents pages, author lines, session dividers, no bookmarks."""
+    pdf = fitz.open()
+    add_page(pdf, "Book of abstracts" if book else "Annual report")
+    add_page(pdf, "Contents")
+    add_page(pdf, "")
+    ranges, toc_rows = [], []
+    offset = 3
+    for index in range(10):
+        if index in (0, 5):
+            session = 1 if index == 0 else 2
+            toc_rows.append((f"Session {session}: Water research", len(pdf) + 1 - offset, False))
+            add_page(pdf, f"Session {session}\nWater research")
+            add_page(pdf, "")
+        title = f"Research topic {index} on river management in 2026"
+        start = len(pdf) + 1
+        toc_rows.append((title, start - offset, True))
+        if index == 3:
+            add_page(pdf, "Session information")
+        add_page(pdf, ("Unrelated document" if wrong_titles else title) + "\nAuthor\nAbstract\nStudy findings")
+        add_page(pdf, "Continuation of the abstract")
+        ranges.append((start, len(pdf)))
+    for index in range(offset, len(pdf)):
+        pdf[index].insert_text((72, 750), str(index + 1 - offset))
+    for index, (title, number, abstract) in enumerate(toc_rows):
+        page = pdf[1 if index < 6 else 2]
+        y = 110 + (index % 6) * 65
+        # Wrap one title; numeric title content must not become a page reference.
+        if index == 1:
+            page.insert_text((72, y), title[:25], fontsize=10)
+            title = title[25:]
+            y += 14
+        page.insert_text((72, y), title + " . . .", fontsize=10)
+        page.insert_text((520, y), str(1 if duplicate and index == 1 else number), fontsize=10)
+        if abstract:
+            page.insert_text((72, y+14), "Author One, Author Two 2026", fontsize=9, fontname="heit")
+    add_page(pdf, "")
+    add_page(pdf, "Back cover")
+    pdf.save(path)
+    pdf.close()
+    return ranges
+
+
+def test_session_contents_splits_without_bookmarks_or_page_labels(tmp_path):
+    from split_pdf import split_pdf, session_contents_info
+    source = tmp_path / "sessions.pdf"
+    expected = write_session_contents_pdf(source)
+    with fitz.open(source) as pdf:
+        assert pdf.get_toc() == []
+        assert pdf.get_page_labels() == []
+        info = session_contents_info(pdf)
+        assert info is not None
+        assert info[2] == 3
+        assert all("Author One" not in row["title"] for row in info[1])
+    assert is_combined_pdf(source)
+    destination = tmp_path / "split"
+    destination.mkdir()
+    rows = split_pdf(source, destination)
+    assert len(rows) == 10
+    assert [(r["pdf_start_page"], r["pdf_end_page"]) for r in rows] == expected
+    for row in rows:
+        with fitz.open(destination / row["output_file"]) as part:
+            assert len(part) == row["page_count"]
+    assert rows[3]["page_count"] == 3  # Start follows printed contents, not title search.
+    assert source.exists()
+
+
+@pytest.mark.parametrize("options", [{"book": False}, {"wrong_titles": True}, {"duplicate": True}])
+def test_session_contents_rejects_invalid_books(tmp_path, options):
+    source = tmp_path / "not_a_match.pdf"
+    write_session_contents_pdf(source, **options)
+    assert not is_combined_pdf(source)
+
+
+def test_session_contents_ignores_incorrect_bookmarks(tmp_path):
+    from split_pdf import session_contents_info
+    source = tmp_path / "bad_bookmarks.pdf"
+    expected = write_session_contents_pdf(source)
+    with fitz.open(source) as pdf:
+        pdf.set_toc([[1, "Session 1: Incorrect", 1], [2, "Incorrect title", 2]])
+        info = session_contents_info(pdf)
+        assert info is not None
+        assert [(r["pdf_start_page"], r["pdf_end_page"]) for r in info[1]] == expected

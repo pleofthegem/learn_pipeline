@@ -190,6 +190,10 @@ def split_pdf(
         toc_end_page, entries, page_offset = combined_info
         matched_entries: list[dict[str, object]] = []
         for entry in entries:
+            if "pdf_start_page" in entry:
+                # The session-contents fallback already validated its boundaries.
+                matched_entries.append(entry)
+                continue
             pdf_start_page = find_title_page(
                 pdf=pdf,
                 title=str(entry["title"]),
@@ -211,6 +215,7 @@ def split_pdf(
                 ) - 1
             else:
                 end_page = pdf.page_count
+            end_page = int(entry.get("pdf_end_page", end_page))
             if (
                 start_page < 1
                 or start_page > pdf.page_count
@@ -257,19 +262,149 @@ def combined_pdf_info(
     """Return parsed combined-PDF info, or None when the format is not matched."""
     toc_page_range = find_toc_page_range(pdf)
     if toc_page_range is None:
-        return None
+        return session_contents_info(pdf)
 
     _, toc_end_page = toc_page_range
     entries = parse_toc(pdf, toc_page_range)
     if len(entries) < 2:
-        return None
+        return session_contents_info(pdf)
 
     try:
         page_offset = derive_page_offset(pdf, entries, toc_end_page)
     except ValueError:
-        return None
+        return session_contents_info(pdf)
 
     return toc_end_page, entries, page_offset
+
+
+def session_contents_rows(page: fitz.Page) -> list[tuple[str, int]]:
+    """Read title/page rows from a dotted-leader contents page.
+
+    Authors are italic; page references are right-aligned. Use text positions
+    rather than whitespace so wrapped titles and references touching the title
+    are handled without confusing years inside titles with page references.
+    """
+    lines = []
+    for block in page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]:
+        for line in block.get("lines", []):
+            spans = [span for span in line["spans"]
+                     if not span["flags"] & 2 and span["bbox"][1] < page.rect.height * 0.9]
+            if spans:
+                lines.append((line["bbox"][1], spans))
+    rows = []
+    for y, spans in sorted(lines, key=lambda item: item[0]):
+        if rows and abs(rows[-1][0] - y) < 2:
+            rows[-1][1].extend(spans)
+        else:
+            rows.append((y, list(spans)))
+    entries = []
+    title_lines = []
+    for _, spans in rows:
+        spans.sort(key=lambda span: span["bbox"][0])
+        reference = None
+        text = []
+        for span in spans:
+            value = span["text"].strip()
+            if value.isdigit() and span["bbox"][0] > page.rect.width * 0.8:
+                reference = int(value)
+            else:
+                value = span["text"]
+                # This proceedings font maps its fi/fl ligatures to unrelated
+                # Unicode characters. Correct only that font's extracted text.
+                if "CrimsonPro" in span["font"]:
+                    value = value.replace("Ǟ", "fi").replace("ǡ", "fl")
+                text.append(value)
+        line = re.sub(r"(?:\.\s*){2,}", " ", "".join(text)).strip(" .")
+        if line.casefold() == "contents":
+            continue
+        if line:
+            title_lines.append(line)
+        if reference is not None:
+            title = " ".join(title_lines).strip()
+            if not title:
+                return []
+            entries.append((title, reference))
+            title_lines = []
+    return entries
+
+
+def session_contents_info(
+    pdf: fitz.Document,
+) -> tuple[int, list[dict[str, object]], int] | None:
+    """Split session-organised abstract books using the printed contents only.
+
+    The contents supply titles, session boundaries and printed start pages.
+    Body-title checks establish/validate the printed-to-PDF page offset, but
+    never replace contents ranges. PDF bookmarks are deliberately not used.
+    """
+    if not any(re.search(r"book\s+of\s+abstracts", pdf[i].get_text(), re.I)
+               for i in range(min(2, pdf.page_count))):
+        return None
+    toc_start = next((i for i in range(pdf.page_count)
+                      if re.search(r"(?im)^\s*Contents\s*$", pdf[i].get_text())), None)
+    if toc_start is None:
+        return None
+    rows = []
+    toc_end = toc_start + 1
+    for index in range(toc_start, pdf.page_count):
+        page_rows = session_contents_rows(pdf[index])
+        if not page_rows:
+            break
+        rows.extend(page_rows)
+        toc_end = index + 1
+    if not rows or not re.match(r"Session\s+\d+\s*:", rows[0][0], re.I):
+        return None
+    printed_pages = [page for _, page in rows]
+    if printed_pages != sorted(set(printed_pages)):
+        return None
+    entries = []
+    session = None
+    for row_index, (title, printed_page) in enumerate(rows):
+        match = re.match(r"Session\s+(\d+)\s*:", title, re.I)
+        if match:
+            session = match.group(1)
+            continue
+        if session is None:
+            return None
+        entries.append({
+            "abstract_id": f"S{session}_A{len(entries) + 1:03d}",
+            "title": title,
+            "printed_start_page": printed_page,
+            "contents_row": row_index,
+        })
+    if len(entries) < 2:
+        return None
+    try:
+        offset = derive_page_offset(pdf, entries, toc_end)
+    except ValueError:
+        return None
+    if printed_pages[0] + offset <= toc_end or printed_pages[-1] + offset > pdf.page_count:
+        return None
+    # Verify the mapping across the book, allowing a title to follow its
+    # contents-designated start page. Keep every listed abstract in its range.
+    verified = 0
+    for entry in entries:
+        start = int(entry["printed_start_page"]) + offset
+        row_index = int(entry["contents_row"])
+        end = rows[row_index + 1][1] + offset - 1 if row_index + 1 < len(rows) else pdf.page_count
+        if any(page_has_title(pdf, page, str(entry["title"]))
+               for page in range(start, min(start + 3, end + 1))):
+            verified += 1
+    if verified < ceil(len(entries) * 0.9):
+        return None
+    # The final abstract has no following contents entry. End at the final
+    # matching printed footer, excluding unnumbered trailing covers.
+    last_start = int(entries[-1]["printed_start_page"]) + offset
+    numbered_pages = [page for page in range(last_start, pdf.page_count + 1)
+                      if str(page - offset) in clean_lines(pdf[page - 1].get_text().splitlines())[-3:]]
+    if not numbered_pages:
+        return None
+    for entry in entries:
+        row_index = int(entry.pop("contents_row"))
+        entry["pdf_start_page"] = int(entry["printed_start_page"]) + offset
+        entry["pdf_end_page"] = (rows[row_index + 1][1] + offset - 1
+                                 if row_index + 1 < len(rows) else numbered_pages[-1])
+    return toc_end, entries, offset
 
 
 def parse_toc(

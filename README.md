@@ -115,6 +115,15 @@ Outputs:
 Checks PDFs in `output/abstracts_raw/` and splits only the ones that match the
 expected combined abstract e-book format.
 
+Supported structures include the original `CONTENT` / `T1_O1` TOC, the
+`Presentation 01` TOC, and session-organised printed contents such as
+`HIC2026_Abstracts.pdf`. The new matcher runs only when the existing matchers
+do not recognise the document. It reads titles and printed page numbers from
+the contents pages, distinguishes italic author lines from titles, and validates
+the printed-to-PDF page offset against body titles. Each abstract ends before
+the next listed abstract or session; the last ends at the final numbered page.
+PDF bookmarks are not used. These outputs use IDs such as `S1_A001`.
+
 ```bash
 python split_pdf.py
 ```
