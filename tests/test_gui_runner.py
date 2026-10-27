@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+import shutil
 from gui import runner
 
 
@@ -28,14 +29,32 @@ def test_invalid_drop_is_rejected_before_copy(tmp_path, monkeypatch):
     assert not list(runner.input_folder("webinar").iterdir())
 
 
-def test_abstract_fixed_outputs(tmp_path, monkeypatch, sample_pdf_path):
+@pytest.mark.parametrize('suffix', ['.pdf', '.doc', '.DOCX'])
+def test_abstract_fixed_outputs(tmp_path, monkeypatch, sample_pdf_path, suffix):
     monkeypatch.setattr(runner, "ROOT", tmp_path)
-    runner.store_inputs("abstracts", [sample_pdf_path])
+    source = sample_pdf_path
+    if suffix != '.pdf':
+        from scripts import convert_to_pdf
+        source = tmp_path / f'abstract_001{suffix}'
+        source.write_bytes(b'Word input')
+        monkeypatch.setattr(convert_to_pdf, 'office_converter_command', lambda: 'soffice')
+        def convert_words(paths, destination):
+            targets = []
+            for path in paths:
+                target = destination / f'{path.stem}.pdf'
+                shutil.copy2(sample_pdf_path, target)
+                targets.append(target)
+            return targets
+        monkeypatch.setattr(convert_to_pdf, 'convert_office_files_to_pdf', convert_words)
+    original = source.read_bytes()
+    runner.store_inputs("abstracts", [source])
     runner.run_job("abstracts")
     outputs = runner.useful_outputs("abstracts")
     assert tmp_path / "output/handoff_bundle/abstract_metadata.csv" in outputs
     assert tmp_path / "output/handoff_bundle/pdfs/abstract_001.pdf" in outputs
     assert all("intermediate_outputs" not in str(p) for p in outputs)
+    assert not (tmp_path / 'output/intermediate_outputs/abstracts_clean').exists()
+    assert source.read_bytes() == original
 
 
 def test_webinar_fixed_outputs(tmp_path, monkeypatch):

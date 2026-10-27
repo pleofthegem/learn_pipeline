@@ -1,7 +1,8 @@
 # IWA Learn Pipeline
 
-The default abstract workflow collects PDFs, splits recognised combined
-PDFs, and extracts metadata. Its handoff bundle contains the individual source
+The default abstract workflow accepts PDF and Word files, converts Word files to
+PDF when present, splits recognised combined PDFs, and extracts metadata.
+Its handoff bundle contains the individual source
 PDFs and their metadata CSV. Webinar processing produces Excel reports.
 
 ## Desktop app
@@ -18,7 +19,7 @@ Tcl/Tk support installed. This launcher requires Python; it is not a standalone
 executable.
 
 1. Choose **Abstracts** or **Webinar reports**.
-2. Drop PDF files (abstracts), CSV files (webinars), or a folder into the box.
+2. Drop PDF or Word files (abstracts), CSV files (webinars), or a folder into the box.
    Clicking the box selects files; **Choose folder** includes supported files
    in subfolders. Imports copy files into `input/` or `webinar/input/` and leave
    originals untouched. Duplicate names receive a numbered suffix.
@@ -28,8 +29,9 @@ executable.
    Excel workbooks. **Open output folder** opens the bundle or webinar output
    folder in your system file manager.
 
-The GUI runs the minimal PDF workflow. Word conversion and anonymisation remain
-available through the optional full command below. Each successful new run
+The GUI automatically converts Word inputs before splitting and extraction.
+Anonymised text exports are available through the optional full command below.
+Each successful new run
 replaces the previous generated outputs; keep any bundles you want to retain
 outside the output folder. A failure during processing can leave partial results.
 
@@ -71,15 +73,15 @@ Conference defaults only fill fields missing from a PDF. Default data locations
 are anchored to the project folder. Custom input and output folders must be
 separate, with neither containing the other.
 
-To include Word conversion and anonymised text exports, run:
+Word conversion is automatic; no extra flag is needed for `.doc` or `.docx` inputs.
+If Word files are present, LibreOffice's `soffice` or `libreoffice` command must be
+on PATH. PDF-only and webinar runs do not require LibreOffice.
+
+To additionally produce anonymised text and its CSV/JSON reports, run:
 
 ```bash
 python -m scripts.main --full
 ```
-
-Full mode accepts `.pdf`, `.doc` and `.docx`. Word conversion requires
-LibreOffice's `soffice` or `libreoffice` command on PATH. PDF-only and webinar
-runs do not require LibreOffice. Minimal mode ignores Word files.
 
 Presentation PDFs identified by `ppt`, `pptx`
 or `presentation` in their paths and password-protected PDFs are skipped.

@@ -3,7 +3,9 @@ from pathlib import Path
 import shutil
 
 from scripts.config import ROOT
-SUFFIXES = {"abstracts": {".pdf"}, "webinar": {".csv"}}
+from scripts.conversion_rules import SUPPORTED_SUFFIXES
+
+SUFFIXES = {"abstracts": SUPPORTED_SUFFIXES, "webinar": {".csv"}}
 
 
 def collect_inputs(mode: str, paths: list[Path]) -> list[Path]:

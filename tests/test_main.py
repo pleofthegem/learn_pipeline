@@ -12,10 +12,12 @@ from test_split_pdf import write_combined_pdf
 
 def test_minimal_bundle_contains_pdfs_and_matching_metadata(sample_input_dir, tmp_path, monkeypatch):
     output = tmp_path / "output"
+    (sample_input_dir / "abstract_003.docx").unlink()
     # Conversion and anonymisation must not run for a default PDF batch.
     def unexpected(*args, **kwargs):
         pytest.fail("Optional processing ran in minimal mode")
     monkeypatch.setattr(pipeline.convert_to_pdf, "convert_inputs_to_pdfs", unexpected)
+    monkeypatch.setattr(pipeline.convert_to_pdf, "office_converter_command", unexpected)
     monkeypatch.setattr(pipeline.anonymise_abstracts, "anonymise_pdf_abstracts", unexpected)
     before = {p.name: p.read_bytes() for p in sample_input_dir.iterdir()}
     counts = pipeline.run_pipeline(sample_input_dir, output, default_additional_info={"name": "Conference", "place": "London"})
@@ -48,7 +50,8 @@ def test_combined_source_is_split_in_bundle_and_original_is_preserved(tmp_path):
     assert (output / 'intermediate_outputs/abstracts_split/split_abstracts.csv').exists()
 
 
-def test_full_mode_converts_word_and_exports_anonymised_text(sample_input_dir, tmp_path, monkeypatch):
+@pytest.mark.parametrize('full', [False, True])
+def test_word_conversion_is_automatic_and_anonymisation_is_optional(sample_input_dir, tmp_path, monkeypatch, full):
     output = tmp_path / 'output'
     monkeypatch.setattr(pipeline.convert_to_pdf, 'office_converter_command', lambda: 'soffice')
     def convert_words(paths, output_dir):
@@ -60,17 +63,24 @@ def test_full_mode_converts_word_and_exports_anonymised_text(sample_input_dir, t
             targets.append(target)
         return targets
     monkeypatch.setattr(pipeline.convert_to_pdf, 'convert_office_files_to_pdf', convert_words)
-    counts = pipeline.run_pipeline(sample_input_dir, output, full=True)
-    assert counts['converted_pdfs'] == counts['metadata_rows'] == counts['anonymised_pdfs'] == 3
+    original = {p.name: p.read_bytes() for p in sample_input_dir.iterdir()}
+    counts = pipeline.run_pipeline(sample_input_dir, output, full=full)
+    assert counts['converted_pdfs'] == counts['metadata_rows'] == 3
+    assert counts['anonymised_pdfs'] == (3 if full else 0)
     intermediate = output / 'intermediate_outputs'
-    assert len(list((intermediate / 'abstracts_clean').glob('*.txt'))) == 3
-    assert '[EMAIL_REMOVED]' in next((intermediate / 'abstracts_clean').glob('*.txt')).read_text()
-    assert (intermediate / 'csv/anonymised_abstracts.csv').exists()
-    assert (intermediate / 'json/anonymised_abstracts.json').exists()
-    # A later minimal run removes full-mode leftovers, but retains original Word files.
-    pipeline.run_pipeline(sample_input_dir, output)
+    if full:
+        assert len(list((intermediate / 'abstracts_clean').glob('*.txt'))) == 3
+        assert '[EMAIL_REMOVED]' in next((intermediate / 'abstracts_clean').glob('*.txt')).read_text()
+        assert (intermediate / 'csv/anonymised_abstracts.csv').exists()
+        assert (intermediate / 'json/anonymised_abstracts.json').exists()
+        # Switching to the default run still converts Word and removes optional outputs.
+        counts = pipeline.run_pipeline(sample_input_dir, output)
+        assert counts['metadata_rows'] == 3
+        assert counts['anonymised_pdfs'] == 0
     assert not (intermediate / 'abstracts_clean').exists()
-    assert (sample_input_dir / 'abstract_003.docx').exists()
+    assert not (intermediate / 'csv/anonymised_abstracts.csv').exists()
+    assert not (intermediate / 'json/anonymised_abstracts.json').exists()
+    assert {p.name: p.read_bytes() for p in sample_input_dir.iterdir()} == original
 
 
 @pytest.mark.parametrize('relation', ['same', 'output_inside_input', 'input_inside_output'])
@@ -109,3 +119,51 @@ def test_cli_defaults_are_independent_of_working_directory(tmp_path, monkeypatch
     assert args.full is False
     monkeypatch.setattr('sys.argv', ['pipeline', '--full'])
     assert pipeline.parse_args().full is True
+
+
+def test_default_word_only_batch_uses_one_office_process_before_metadata(tmp_path, sample_pdf_path, monkeypatch):
+    import subprocess
+    source = tmp_path / 'inputs'
+    source.mkdir()
+    names = ['first.doc', 'second.docx', 'third.DOCX']
+    for name in names:
+        (source / name).write_text(name)
+    calls = []
+    monkeypatch.setattr(pipeline.convert_to_pdf, 'office_converter_command', lambda: 'soffice')
+    def run(args, **kwargs):
+        calls.append(args)
+        destination = Path(args[args.index('--outdir') + 1])
+        documents = args[args.index('--outdir') + 2:]
+        assert len(documents) == 3
+        for document in map(Path, documents):
+            shutil.copy2(sample_pdf_path, destination / f'{document.stem}.pdf')
+        return subprocess.CompletedProcess(args, 0, stdout='', stderr='')
+    monkeypatch.setattr(pipeline.convert_to_pdf.subprocess, 'run', run)
+    output = tmp_path / 'output'
+    counts = pipeline.run_pipeline(source, output)
+    assert len(calls) == 1
+    assert counts['converted_pdfs'] == counts['metadata_rows'] == 3
+    assert counts['anonymised_pdfs'] == 0
+    assert {p.name for p in (output / 'handoff_bundle/pdfs').glob('*.pdf')} == {
+        'first.pdf', 'second.pdf', 'third.pdf',
+    }
+    assert not (output / 'intermediate_outputs/abstracts_clean').exists()
+    assert {p.name: p.read_text() for p in source.iterdir()} == {name: name for name in names}
+
+
+def test_missing_office_does_not_clear_previous_bundle_for_default_word_run(tmp_path, monkeypatch):
+    source = tmp_path / 'inputs'
+    source.mkdir()
+    word = source / 'paper.docx'
+    word.write_bytes(b'original Word document')
+    output = tmp_path / 'output'
+    previous = output / 'handoff_bundle/abstract_metadata.csv'
+    previous.parent.mkdir(parents=True)
+    previous.write_text('previous metadata')
+    def missing_office():
+        raise RuntimeError('Office conversion requires soffice or libreoffice.')
+    monkeypatch.setattr(pipeline.convert_to_pdf, 'office_converter_command', missing_office)
+    with pytest.raises(RuntimeError, match='Office conversion requires'):
+        pipeline.run_pipeline(source, output)
+    assert previous.read_text() == 'previous metadata'
+    assert word.read_bytes() == b'original Word document'

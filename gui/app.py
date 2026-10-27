@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from tkinterdnd2 import TkinterDnD, DND_FILES, COPY, REFUSE_DROP
 
-from .runner import ROOT, input_folder, store_inputs, useful_outputs, run_job, current_inputs
+from .runner import ROOT, SUFFIXES, input_folder, store_inputs, useful_outputs, run_job, current_inputs
 
 
 class Writer:
@@ -36,7 +36,7 @@ class Workflow(ttk.Frame):
         input_folder(mode).mkdir(parents=True, exist_ok=True)
         title = "Abstracts" if mode == "abstracts" else "Webinar reports"
         ttk.Label(self, text=title, style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        types = "PDF files" if mode == "abstracts" else "Zoom attendee CSV files"
+        types = "PDF or Word files" if mode == "abstracts" else "Zoom attendee CSV files"
         self.drop = tk.Label(self, text=f"Drop {types} or a folder here\n\nor click to add files",
                              background="#eaf3f7", foreground="#17596e", font=("Segoe UI", 13),
                              relief="flat", highlightthickness=1, highlightbackground="#aacbd7",
@@ -139,7 +139,8 @@ class Workflow(ttk.Frame):
                 )
                 paths = [path] if path else []
             else:
-                patterns = "*.pdf *.PDF" if self.mode == "abstracts" else "*.csv *.CSV"
+                patterns = " ".join(f"*{extension}" for suffix in sorted(SUFFIXES[self.mode])
+                                    for extension in (suffix, suffix.upper()))
                 paths = filedialog.askopenfilenames(parent=self, filetypes=[("Input files", patterns)])
             if paths:
                 self.add(paths)
@@ -182,7 +183,7 @@ class Workflow(ttk.Frame):
             except queue.Empty:
                 break
             if kind == "progress":
-                if text.startswith(("Collecting", "Splitting", "Extracting", "Anonymising", "Processing report")):
+                if text.startswith(("Collecting", "Converting", "Splitting", "Extracting", "Anonymising", "Processing report")):
                     self.status.set(text)
             else:
                 self.app.busy = False

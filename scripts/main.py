@@ -15,20 +15,22 @@ def run_pipeline(
 ) -> dict[str, int]:
     """Replace generated outputs, leaving source files untouched.
 
-    By default only PDFs are collected, split and described. Full mode also
-    accepts Word documents and exports anonymised text. Input and output trees
-    must be separate so clearing outputs cannot remove or re-import sources.
+    Collect PDFs and automatically batch-convert any Word documents before
+    splitting and extracting metadata. Full mode adds anonymised text exports.
+    Input and output trees must be separate so clearing outputs cannot remove
+    or re-import sources.
     """
     source, output = Path(input_folder).resolve(), Path(output_folder).resolve()
     if source.is_relative_to(output) or output.is_relative_to(source):
         raise ValueError("Input and output folders must be separate, with neither inside the other.")
     if not source.is_dir():
         raise ValueError(f"Input folder does not exist: {source}")
-    suffixes = convert_to_pdf.SUPPORTED_SUFFIXES if full else {".pdf"}
-    files = [p for p in source.rglob("*") if p.is_file() and p.suffix.lower() in suffixes]
+    files = [p for p in source.rglob("*")
+             if p.is_file() and p.suffix.lower() in convert_to_pdf.SUPPORTED_SUFFIXES]
     if not files:
-        raise ValueError("No supported input files found. Use PDF files, or --full for Word documents.")
-    if full and any(p.suffix.lower() in convert_to_pdf.OFFICE_SUFFIXES for p in files):
+        raise ValueError("No supported input files found. Add PDF, DOC or DOCX files.")
+    has_word_inputs = any(p.suffix.lower() in convert_to_pdf.OFFICE_SUFFIXES for p in files)
+    if has_word_inputs:
         convert_to_pdf.office_converter_command()
 
     bundle = output / "handoff_bundle"
@@ -37,7 +39,7 @@ def run_pipeline(
     print("Clearing generated outputs...")
     clear_outputs.clear_folders([bundle, intermediate])
     print("Collecting input files...")
-    if full:
+    if has_word_inputs:
         _, copied = convert_to_pdf.convert_inputs_to_pdfs(
             source, intermediate / "abstracts_aggregated", pdfs,
         )
@@ -70,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input_folder", nargs="?", type=Path, default=INPUT_FOLDER)
     parser.add_argument("--output-folder", type=Path, default=OUTPUT_ROOT)
-    parser.add_argument("--full", action="store_true", help="Also convert Word inputs and export anonymised text.")
+    parser.add_argument("--full", action="store_true", help="Also export anonymised text and its CSV/JSON reports.")
     parser.add_argument("--conference-name")
     parser.add_argument("--conference-place")
     return parser.parse_args()
