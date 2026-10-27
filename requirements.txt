@@ -2,3 +2,4 @@ PyMuPDF
 openpyxl
 pandas
 pytest
+tkinterdnd2

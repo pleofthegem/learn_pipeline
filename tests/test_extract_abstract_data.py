@@ -6,7 +6,7 @@ import fitz
 import pytest
 
 from conftest import write_sample_pdf
-from extract_abstract_data import (
+from scripts.extract_abstract_data import (
     clean_author_line,
     default_additional_info_from_values,
     extract_abstract_data,

@@ -4,10 +4,8 @@ import fitz
 
 import pytest
 
-from split_pdf import (
-    INPUT_FOLDER,
-    METADATA_CSV,
-    METADATA_JSON,
+from scripts.split_rules import INPUT_FOLDER, METADATA_CSV, METADATA_JSON
+from scripts.split_pdf import (
     clean_folder,
     find_title_page,
     find_toc_page_range,
@@ -633,7 +631,7 @@ def write_session_contents_pdf(path: Path, *, book=True, wrong_titles=False, dup
 
 
 def test_session_contents_splits_without_bookmarks_or_page_labels(tmp_path):
-    from split_pdf import split_pdf, session_contents_info
+    from scripts.split_pdf import split_pdf, session_contents_info
     source = tmp_path / "sessions.pdf"
     expected = write_session_contents_pdf(source)
     with fitz.open(source) as pdf:
@@ -664,7 +662,7 @@ def test_session_contents_rejects_invalid_books(tmp_path, options):
 
 
 def test_session_contents_ignores_incorrect_bookmarks(tmp_path):
-    from split_pdf import session_contents_info
+    from scripts.split_pdf import session_contents_info
     source = tmp_path / "bad_bookmarks.pdf"
     expected = write_session_contents_pdf(source)
     with fitz.open(source) as pdf:

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-import anonymise_abstracts
-from anonymise_abstracts import (
+from scripts import anonymise_abstracts
+from scripts.anonymise_abstracts import (
     anonymise_pdf_abstracts,
     anonymise_text,
     anonymise_text_with_counts,
@@ -380,22 +380,20 @@ def test_main_creates_missing_folders_for_empty_run(
     def fake_parse_args() -> object:
         return type("Args", (), {"file_name": None})()
 
-    monkeypatch.chdir(tmp_path)
+    input_dir = tmp_path / "output/handoff_bundle/pdfs"
+    clean_dir = tmp_path / "output/intermediate_outputs/abstracts_clean"
+    csv_path = tmp_path / "output/intermediate_outputs/csv/anonymised_abstracts.csv"
+    json_path = tmp_path / "output/intermediate_outputs/json/anonymised_abstracts.json"
     monkeypatch.setattr(anonymise_abstracts, "parse_args", fake_parse_args)
-
+    monkeypatch.setattr(
+        anonymise_abstracts, "anonymise_pdf_abstracts",
+        lambda **kwargs: anonymise_pdf_abstracts(
+            input_dir=input_dir, output_dir=clean_dir,
+            csv_path=csv_path, json_path=json_path, **kwargs,
+        ),
+    )
     anonymise_abstracts.main()
-
-    assert (tmp_path / "output" / "abstracts_raw").exists()
-    assert (tmp_path / "output" / "abstracts_clean").exists()
-    assert (
-        tmp_path
-        / "output"
-        / "abstract_csv"
-        / "anonymised_abstracts.csv"
-    ).exists()
-    assert (
-        tmp_path
-        / "output"
-        / "abstract_json"
-        / "anonymised_abstracts.json"
-    ).exists()
+    assert input_dir.is_dir()
+    assert clean_dir.is_dir()
+    assert csv_path.exists()
+    assert json_path.exists()

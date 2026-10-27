@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from clear_outputs import OUTPUT_FOLDERS, clear_outputs
+from scripts.clear_outputs import OUTPUT_FOLDERS, clear_outputs
 
 
 def test_clear_outputs_removes_only_generated_output_contents(

@@ -6,97 +6,36 @@ import json
 import re
 import shutil
 from math import ceil
+from collections.abc import Callable
 from pathlib import Path
 
 import fitz
 
-OUTPUT_ROOT = "output"
-# Default folder containing PDFs to check for combined abstract e-books.
-INPUT_FOLDER = f"{OUTPUT_ROOT}/abstracts_raw"
-# Staging folder for human inspection.
-SPLIT_FOLDER = f"{OUTPUT_ROOT}/abstracts_split"
-# Shared general input folder for other scripts like anonymise_abstracts.py and extract_abstract_metadata.py
-OUTPUT_FOLDER = f"{OUTPUT_ROOT}/abstracts_raw"
-METADATA_CSV = "split_abstracts.csv"
-METADATA_JSON = "split_abstracts.json"
-CSV_ENCODING = "utf-8-sig"
-PRESERVED_NAMES = {".gitkeep"}
-PDF_SUFFIX = ".pdf"
-CODE_PATTERN = re.compile(r"^T\d+_[OP]\d+$")
-PRESENTATION_PATTERN = re.compile(
-    r"^Presentation\s+(?P<number>\d{1,3})(?:\s+(?P<title>.+))?$",
-    re.IGNORECASE,
-)
-PAGE_PATTERN = re.compile(r"^\d+$")
-SKIP_TOC_LINES = {"CONTENT", "I", "II", "III", "IV", "V"}
-FUZZY_TITLE_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "by",
-    "for",
-    "in",
-    "of",
-    "on",
-    "the",
-    "to",
-    "using",
-    "with",
-}
-TITLE_MATCH_LINE_LIMIT = 12
-METADATA_FIELDS = [
-    "source_file",
-    "abstract_id",
-    "title",
-    "printed_start_page",
-    "pdf_start_page",
-    "pdf_end_page",
-    "page_count",
-    "output_file",
-]
+from . import split_rules as rules
+from .clear_outputs import clear_folder
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments.
-
-    Returns:
-        argparse.Namespace: Parsed arguments containing `input_folder`, the
-            folder of PDFs to check for combined files. Defaults to
-            `INPUT_FOLDER` when
-            omitted.
-    """
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Split folders of combined abstract PDFs into single PDFs."
     )
     parser.add_argument(
         "input_folder",
         nargs="?",
-        default=INPUT_FOLDER,
+        default=rules.INPUT_FOLDER,
         type=str,
         help="Folder of PDFs to check for combined abstract e-books.",
     )
     return parser.parse_args()
 
-# Main API for the rest of the repo.
-
 
 def split_combined_pdfs(
     input_folder: Path,
-    output_folder: Path = Path(OUTPUT_FOLDER),
-    staging_folder: Path = Path(SPLIT_FOLDER),
+    output_folder: Path = Path(rules.OUTPUT_FOLDER),
+    staging_folder: Path = Path(rules.SPLIT_FOLDER),
 ) -> list[dict[str, object]]:
-    """Run the split step using derived pipeline defaults.
-
-    Args:
-        input_folder: Folder containing PDFs to check for combined files.
-        output_folder: Final folder that receives split PDFs.
-        staging_folder: Intermediary folder where PDFs are split before being
-            copied to the final output folder, and where metadata is written for
-            human review.
-
-    Returns:
-        list[dict[str, object]]: Metadata rows for every generated PDF.
-    """
+    """Run the split step using derived pipeline defaults."""
     input_folder = Path(input_folder)
     output_folder = Path(output_folder)
     staging_folder = Path(staging_folder)
@@ -105,27 +44,17 @@ def split_combined_pdfs(
         output_folder=output_folder,
         staging_folder=staging_folder,
     )
-    write_metadata_csv(metadata, staging_folder / METADATA_CSV)
-    write_metadata_json(metadata, staging_folder / METADATA_JSON)
+    write_metadata_csv(metadata, staging_folder / rules.METADATA_CSV)
+    write_metadata_json(metadata, staging_folder / rules.METADATA_JSON)
     return metadata
 
 
 def split_folder(
     input_folder: Path,
-    output_folder: Path = Path(OUTPUT_FOLDER),
-    staging_folder: Path = Path(SPLIT_FOLDER),
+    output_folder: Path = Path(rules.OUTPUT_FOLDER),
+    staging_folder: Path = Path(rules.SPLIT_FOLDER),
 ) -> list[dict[str, object]]:
-    """Split every combined PDF in a folder.
-
-    Args:
-        input_folder: Folder containing PDFs to check for combined files.
-        output_folder: Final folder that receives the split PDF files.
-        staging_folder: Intermediary folder where PDFs are split before they are
-            copied to the final output folder.
-
-    Returns:
-        list[dict[str, object]]: Metadata rows for every generated PDF.
-    """
+    """Split every combined PDF in a folder."""
     input_folder = Path(input_folder)
     output_folder = Path(output_folder)
     staging_folder = Path(staging_folder)
@@ -149,7 +78,7 @@ def split_folder(
     pdf_paths = [
         path
         for path in sorted(Path(input_folder).iterdir())
-        if path.is_file() and path.suffix.lower() == PDF_SUFFIX
+        if path.is_file() and path.suffix.lower() == rules.PDF_SUFFIX
     ]
 
     split_source_paths: list[Path] = []
@@ -164,7 +93,6 @@ def split_folder(
 
     copy_split_pdfs(staging_folder, output_folder)
     remove_split_source_pdfs(split_source_paths, output_folder)
-    # Return anything at all?
     return metadata
 
 
@@ -172,16 +100,7 @@ def split_pdf(
     pdf_path: Path,
     output_folder: Path,
 ) -> list[dict[str, object]]:
-    """Split one combined PDF into individual abstract PDFs.
-
-    Args:
-        pdf_path: Combined PDF to split.
-        output_folder: Folder that receives the split PDF files.
-
-    Returns:
-        list[dict[str, object]]: Metadata rows for generated PDFs. An empty list
-            is returned when the PDF does not contain the expected TOC.
-    """
+    """Split one combined PDF into individual abstract PDFs."""
     with fitz.open(pdf_path) as pdf:
         combined_info = combined_pdf_info(pdf)
         if combined_info is None:
@@ -243,15 +162,7 @@ def split_pdf(
 
 
 def is_combined_pdf(pdf_path: Path) -> bool:
-    """Check whether a PDF matches the expected combined abstract format.
-
-    Args:
-        pdf_path: PDF path to inspect.
-
-    Returns:
-        bool: True when the PDF has a parseable combined-abstract TOC and the
-            first listed abstract can be found later in the document.
-    """
+    """Check whether a PDF matches the expected combined abstract format."""
     with fitz.open(pdf_path) as pdf:
         return combined_pdf_info(pdf) is not None
 
@@ -259,22 +170,16 @@ def is_combined_pdf(pdf_path: Path) -> bool:
 def combined_pdf_info(
     pdf: fitz.Document,
 ) -> tuple[int, list[dict[str, object]], int] | None:
-    """Return parsed combined-PDF info, or None when the format is not matched."""
-    toc_page_range = find_toc_page_range(pdf)
-    if toc_page_range is None:
-        return session_contents_info(pdf)
-
-    _, toc_end_page = toc_page_range
-    entries = parse_toc(pdf, toc_page_range)
-    if len(entries) < 2:
-        return session_contents_info(pdf)
-
-    try:
-        page_offset = derive_page_offset(pdf, entries, toc_end_page)
-    except ValueError:
-        return session_contents_info(pdf)
-
-    return toc_end_page, entries, page_offset
+    """Try the existing TOC formats before session-organised contents."""
+    toc_range = find_toc_page_range(pdf)
+    if toc_range:
+        entries = parse_toc(pdf, toc_range)
+        if len(entries) >= 2:
+            try:
+                return toc_range[1], entries, derive_page_offset(pdf, entries, toc_range[1])
+            except ValueError:
+                pass
+    return session_contents_info(pdf)
 
 
 def session_contents_rows(page: fitz.Page) -> list[tuple[str, int]]:
@@ -288,12 +193,12 @@ def session_contents_rows(page: fitz.Page) -> list[tuple[str, int]]:
     for block in page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]:
         for line in block.get("lines", []):
             spans = [span for span in line["spans"]
-                     if not span["flags"] & 2 and span["bbox"][1] < page.rect.height * 0.9]
+                     if not span["flags"] & 2 and span["bbox"][1] < page.rect.height * rules.CONTENTS_FOOTER_RATIO]
             if spans:
                 lines.append((line["bbox"][1], spans))
     rows = []
     for y, spans in sorted(lines, key=lambda item: item[0]):
-        if rows and abs(rows[-1][0] - y) < 2:
+        if rows and abs(rows[-1][0] - y) < rules.CONTENTS_ROW_TOLERANCE:
             rows[-1][1].extend(spans)
         else:
             rows.append((y, list(spans)))
@@ -305,7 +210,7 @@ def session_contents_rows(page: fitz.Page) -> list[tuple[str, int]]:
         text = []
         for span in spans:
             value = span["text"].strip()
-            if value.isdigit() and span["bbox"][0] > page.rect.width * 0.8:
+            if value.isdigit() and span["bbox"][0] > page.rect.width * rules.CONTENTS_REFERENCE_MIN_X:
                 reference = int(value)
             else:
                 value = span["text"]
@@ -388,9 +293,9 @@ def session_contents_info(
         row_index = int(entry["contents_row"])
         end = rows[row_index + 1][1] + offset - 1 if row_index + 1 < len(rows) else pdf.page_count
         if any(page_has_title(pdf, page, str(entry["title"]))
-               for page in range(start, min(start + 3, end + 1))):
+               for page in range(start, min(start + rules.SESSION_TITLE_LOOKAHEAD, end + 1))):
             verified += 1
-    if verified < ceil(len(entries) * 0.9):
+    if verified < ceil(len(entries) * rules.SESSION_TITLE_COVERAGE):
         return None
     # The final abstract has no following contents entry. End at the final
     # matching printed footer, excluding unnumbered trailing covers.
@@ -411,20 +316,7 @@ def parse_toc(
     pdf: fitz.Document,
     toc_page_range: tuple[int, int] | None = None,
 ) -> list[dict[str, object]]:
-    """Parse abstract IDs, titles, and printed start pages from the TOC.
-
-    Extracts useful data from the Table of Contents.
-
-    Args:
-        pdf: Open PDF document.
-        toc_page_range: Optional first and last 1-based PDF pages containing
-            TOC entries. When omitted, the range is derived from pages with the
-            `CONTENT` heading.
-
-    Returns:
-        list[dict[str, object]]: TOC entries with `abstract_id`, `title`, and
-            `printed_start_page`.
-    """
+    """Parse abstract IDs, titles, and printed start pages from the TOC."""
     if toc_page_range is None:
         toc_page_range = find_toc_page_range(pdf)
     if toc_page_range is None:
@@ -453,15 +345,15 @@ def parse_code_toc_lines(lines: list[str]) -> list[dict[str, object]]:
     title_lines: list[str] = []
 
     for line in lines:
-        if line in SKIP_TOC_LINES:
+        if line in rules.SKIP_TOC_LINES:
             continue
 
-        if CODE_PATTERN.fullmatch(line):
+        if rules.CODE_PATTERN.fullmatch(line):
             abstract_id = line
             title_lines = []
             continue
 
-        if abstract_id and PAGE_PATTERN.fullmatch(line):
+        if abstract_id and rules.PAGE_PATTERN.fullmatch(line):
             entries.append(
                 {
                     "abstract_id": abstract_id,
@@ -496,7 +388,7 @@ def parse_presentation_toc_lines(lines: list[str]) -> list[dict[str, object]]:
             section_prefix = "P"
             continue
 
-        match = PRESENTATION_PATTERN.fullmatch(line)
+        match = rules.PRESENTATION_PATTERN.fullmatch(line)
         if match:
             abstract_number = match.group("number")
             abstract_prefix = section_prefix or "PR"
@@ -504,7 +396,7 @@ def parse_presentation_toc_lines(lines: list[str]) -> list[dict[str, object]]:
             title_lines = [title.strip()] if title else []
             continue
 
-        if abstract_number and PAGE_PATTERN.fullmatch(line):
+        if abstract_number and rules.PAGE_PATTERN.fullmatch(line):
             entries.append({
                 "abstract_id": f"{abstract_prefix}{int(abstract_number):02d}",
                 "title": " ".join(title_lines),
@@ -522,15 +414,7 @@ def parse_presentation_toc_lines(lines: list[str]) -> list[dict[str, object]]:
 
 
 def find_toc_page_range(pdf: fitz.Document) -> tuple[int, int] | None:
-    """Find the table-of-contents pages in a combined PDF.
-
-    Args:
-        pdf: Open PDF document.
-
-    Returns:
-        tuple[int, int] | None: First and last 1-based TOC page numbers, or
-            None when the expected TOC pattern is not present.
-    """
+    """Find the table-of-contents pages in a combined PDF."""
     code_toc_range = find_code_toc_page_range(pdf)
     if code_toc_range is not None:
         return code_toc_range
@@ -539,49 +423,25 @@ def find_toc_page_range(pdf: fitz.Document) -> tuple[int, int] | None:
 
 
 def find_code_toc_page_range(pdf: fitz.Document) -> tuple[int, int] | None:
-    """Find TOC pages for the original `CONTENT` plus `T1_O1` style."""
-    toc_start_page: int | None = None
-    toc_end_page: int | None = None
-
-    for page_index in range(pdf.page_count):
-        lines = clean_lines(pdf[page_index].get_text("text").splitlines())
-        if "CONTENT" in lines:
-            page_number = page_index + 1
-            if toc_start_page is None:
-                toc_start_page = page_number
-            toc_end_page = page_number
-            continue
-
-        if toc_start_page is not None:
-            break
-
-    if toc_start_page is None or toc_end_page is None:
-        return None
-
-    return toc_start_page, toc_end_page
+    return matching_page_range(pdf, lambda lines: "CONTENT" in lines)
 
 
 def find_presentation_toc_page_range(pdf: fitz.Document) -> tuple[int, int] | None:
-    """Find TOC pages for `Presentation 01` style abstract lists."""
-    toc_start_page: int | None = None
-    toc_end_page: int | None = None
+    return matching_page_range(pdf, lambda lines: any(rules.PRESENTATION_PATTERN.fullmatch(line) for line in lines))
 
-    for page_index in range(pdf.page_count):
-        lines = clean_lines(pdf[page_index].get_text("text").splitlines())
-        if any(PRESENTATION_PATTERN.fullmatch(line) for line in lines):
-            page_number = page_index + 1
-            if toc_start_page is None:
-                toc_start_page = page_number
-            toc_end_page = page_number
-            continue
 
-        if toc_start_page is not None:
+def matching_page_range(
+    pdf: fitz.Document, matches: Callable[[list[str]], bool],
+) -> tuple[int, int] | None:
+    """Find the first consecutive run of matching pages, using 1-based numbers."""
+    start = end = None
+    for number, page in enumerate(pdf, 1):
+        if matches(clean_lines(page.get_text("text").splitlines())):
+            start = number if start is None else start
+            end = number
+        elif start is not None:
             break
-
-    if toc_start_page is None or toc_end_page is None:
-        return None
-
-    return toc_start_page, toc_end_page
+    return (start, end) if start is not None else None
 
 
 def derive_page_offset(
@@ -589,21 +449,7 @@ def derive_page_offset(
     entries: list[dict[str, object]],
     toc_end_page: int,
 ) -> int:
-    """Derive the offset between printed TOC pages and PDF pages.
-    Check by using the table of contents' first abstract. Check if the
-    title is present.
-
-    Args:
-        pdf: Open PDF document.
-        entries: Parsed TOC entries.
-        toc_end_page: Last 1-based TOC page number.
-
-    Returns:
-        int: Offset to add to printed page numbers.
-
-    Raises:
-        ValueError: If the first TOC title cannot be found after the TOC.
-    """
+    """Derive the offset between printed TOC pages and PDF pages."""
     first_entry = entries[0]
     title = str(first_entry["title"])
     printed_page = int(first_entry["printed_start_page"])
@@ -622,19 +468,7 @@ def find_title_page(
     page_offset: int,
     scan_start_page: int,
 ) -> int | None:
-    """Find the actual PDF page where an abstract title appears.
-
-    Args:
-        pdf: Open PDF document.
-        title: Abstract title from the TOC.
-        printed_page: Printed start page from the TOC.
-        page_offset: Number added to the printed page to get the likely PDF page.
-        scan_start_page: First 1-based PDF page to use for fallback scanning.
-
-    Returns:
-        int | None: 1-based PDF page containing the abstract title, or `None`
-            when no matching page can be found.
-    """
+    """Find the actual PDF page where an abstract title appears."""
     expected_page = printed_page + page_offset
     guided_pages = nearby_page_numbers(
         expected_page=expected_page,
@@ -675,16 +509,7 @@ def nearby_page_numbers(
 
 
 def page_has_title(pdf: fitz.Document, page_number: int, title: str) -> bool:
-    """Check whether a PDF page starts with a TOC title.
-
-    Args:
-        pdf: Open PDF document.
-        page_number: 1-based PDF page number to inspect.
-        title: Title to search for.
-
-    Returns:
-        bool: True when the normalised title appears near the top of the page.
-    """
+    """Check whether a PDF page starts with a TOC title."""
     if page_number < 1 or page_number > pdf.page_count:
         return False
 
@@ -694,18 +519,18 @@ def page_has_title(pdf: fitz.Document, page_number: int, title: str) -> bool:
         return True
 
     title_tokens = significant_title_tokens(title)
-    if len(title_tokens) < 4:
+    if len(title_tokens) < rules.MIN_TITLE_TOKENS:
         return False
 
     page_tokens = set(significant_title_tokens(title_area))
     matched_tokens = [token for token in title_tokens if token in page_tokens]
-    required_matches = max(4, ceil(len(title_tokens) * 0.85))
+    required_matches = max(rules.MIN_TITLE_TOKENS, ceil(len(title_tokens) * rules.TITLE_TOKEN_COVERAGE))
     return len(matched_tokens) >= required_matches
 
 
 def title_match_area(lines: list[str]) -> str:
     """Return the page region used to decide whether a title starts a page."""
-    return " ".join(lines[:TITLE_MATCH_LINE_LIMIT])
+    return " ".join(lines[:rules.TITLE_MATCH_LINE_LIMIT])
 
 
 def significant_title_tokens(text: str) -> list[str]:
@@ -713,47 +538,25 @@ def significant_title_tokens(text: str) -> list[str]:
     return [
         token
         for token in re.findall(r"[a-z0-9]+", text.lower())
-        if token not in FUZZY_TITLE_STOPWORDS
+        if token not in rules.FUZZY_TITLE_STOPWORDS
     ]
 
 
 def save_page_range(
-    pdf: fitz.Document,
-    start_page: int,
-    end_page: int,
-    output_path: Path,
+    pdf: fitz.Document, start_page: int, end_page: int, output_path: Path,
 ) -> None:
-    """Save a 1-based inclusive page range to a new PDF.
-
-    Args:
-        pdf: Open source PDF document.
-        start_page: First 1-based PDF page to copy.
-        end_page: Last 1-based PDF page to copy.
-        output_path: Destination PDF path.
-
-    Returns:
-        None.
-    """
-    output = fitz.open()
-    output.insert_pdf(pdf, from_page=start_page - 1, to_page=end_page - 1)
-    output.save(output_path)
-    output.close()
+    """Save a 1-based inclusive page range to a new PDF."""
+    with fitz.open() as output:
+        output.insert_pdf(pdf, from_page=start_page - 1, to_page=end_page - 1)
+        output.save(output_path)
 
 
 def copy_split_pdfs(staging_folder: Path, output_folder: Path) -> list[Path]:
-    """Copy staged split PDF files into the final output folder.
-
-    Args:
-        staging_folder: Folder containing split PDFs.
-        output_folder: Final folder that receives the split PDFs.
-
-    Returns:
-        list[Path]: Final paths for copied PDF files.
-    """
+    """Copy staged split PDF files into the final output folder."""
     output_folder.mkdir(parents=True, exist_ok=True)
     copied: list[Path] = []
 
-    for path in sorted(staging_folder.glob(f"*{PDF_SUFFIX}")):
+    for path in sorted(staging_folder.glob(f"*{rules.PDF_SUFFIX}")):
         destination = output_folder / path.name
         if path.resolve() == destination.resolve():
             copied.append(destination)
@@ -769,15 +572,7 @@ def remove_split_source_pdfs(
     source_paths: list[Path],
     output_folder: Path,
 ) -> list[Path]:
-    """Remove combined source PDFs from the final output folder after splitting.
-
-    Args:
-        source_paths: Combined PDF paths that produced at least one split PDF.
-        output_folder: Final output folder that should contain atomic PDFs only.
-
-    Returns:
-        list[Path]: Paths removed from the output folder.
-    """
+    """Remove combined source PDFs from the final output folder after splitting."""
     removed: list[Path] = []
     output_folder = Path(output_folder)
 
@@ -793,91 +588,43 @@ def remove_split_source_pdfs(
 
 
 def clean_folder(folder: Path) -> None:
-    """Remove all files and folders inside a folder.
-
-    Args:
-        folder: Existing folder whose contents should be removed.
-
-    Returns:
-        None.
-    """
-    for path in folder.iterdir():
-        if path.name in PRESERVED_NAMES:
-            continue
-        if path.is_dir() and not path.is_symlink():
-            shutil.rmtree(path)
-            continue
-
-        path.unlink()
+    """Clear split staging files while preserving .gitkeep."""
+    clear_folder(folder)
 
 
 def clean_lines(lines: list[str]) -> list[str]:
-    """Strip blank text lines.
-
-    Args:
-        lines: Raw text lines.
-
-    Returns:
-        list[str]: Non-empty stripped lines.
-    """
+    """Strip blank text lines."""
     return [line.strip() for line in lines if line.strip()]
 
 
 def normalise(text: str) -> str:
-    """Normalise text for title matching.
-
-    Args:
-        text: Text to normalise.
-
-    Returns:
-        str: Lowercase alphanumeric text.
-    """
+    """Normalise text for title matching."""
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
 
 def write_metadata_csv(metadata: list[dict[str, object]], path: Path) -> None:
-    """Write split metadata to CSV.
-
-    Args:
-        metadata: Metadata rows to write.
-        path: CSV output path.
-
-    Returns:
-        None.
-    """
+    """Write split metadata to CSV."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding=CSV_ENCODING) as file:
-        writer = csv.DictWriter(file, fieldnames=METADATA_FIELDS)
+    with path.open("w", newline="", encoding=rules.CSV_ENCODING) as file:
+        writer = csv.DictWriter(file, fieldnames=rules.METADATA_FIELDS)
         writer.writeheader()
         writer.writerows(metadata)
 
 
 def write_metadata_json(metadata: list[dict[str, object]], path: Path) -> None:
-    """Write split metadata to JSON.
-
-    Args:
-        metadata: Metadata rows to write.
-        path: JSON output path.
-
-    Returns:
-        None.
-    """
+    """Write split metadata to JSON."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
         json.dump(metadata, file, indent=2)
 
 
 def main() -> None:
-    """Run the folder splitter from the command line.
-
-    Returns:
-        None.
-    """
+    """Run the folder splitter from the command line."""
     args = parse_args()
-    output_folder = Path(OUTPUT_FOLDER)
-    staging_folder = Path(SPLIT_FOLDER)
-    csv_path = staging_folder / METADATA_CSV
-    json_path = staging_folder / METADATA_JSON
+    output_folder = Path(rules.OUTPUT_FOLDER)
+    staging_folder = Path(rules.SPLIT_FOLDER)
+    csv_path = staging_folder / rules.METADATA_CSV
+    json_path = staging_folder / rules.METADATA_JSON
     metadata = split_combined_pdfs(Path(args.input_folder))
 
     print(f"Split {len(metadata)} abstracts.")
