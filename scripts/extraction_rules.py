@@ -15,6 +15,8 @@ TITLE_HINT_MIN_SCORE = 0.75
 TITLE_FONT_TOLERANCE = 0.1
 KEYWORD_FONT_TOLERANCE = 0.5
 EVENT_ACRONYMS = ("IWA", "AI", "UN", "UK", "USA")
+UNLABELLED_BODY_MIN_WORDS = 12
+UNLABELLED_SENTENCE_MIN_WORDS = 6
 
 # Outer fields of the boxed abstract submission form. Headings within the
 # abstract (e.g. Methodology or Conclusion) belong to its description.

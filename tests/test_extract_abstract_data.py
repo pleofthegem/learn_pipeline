@@ -680,3 +680,43 @@ def test_abstract_keyword_heading_before_abstract_is_not_description(tmp_path, h
     row = process_pdf(path)
     assert row["abstract_keywords"] == "Southern Bangladesh, Micropollutants, Groundwater, Climate Resilience"
     assert row["abstract_description"] == "The study compares water quality."
+
+
+@pytest.mark.parametrize('body_heading', ['', 'Introduction'])
+@pytest.mark.parametrize('keywords_first', [False, True])
+def test_unlabelled_abstract_keeps_body_across_pages(tmp_path, body_heading, keywords_first):
+    path = tmp_path / 'paper.pdf'
+    first_paragraph = (
+        'We measured seasonal water quality changes across several streams to understand '
+        'how rainfall influences pollutant concentrations and downstream habitats.'
+    )
+    last_paragraph = (
+        'The measurements show that continuous monitoring provides useful evidence for '
+        'water management and helps identify areas requiring further investigation.'
+    )
+    with fitz.open() as pdf:
+        first = pdf.new_page()
+        first.insert_text((72, 72), 'Urban stream water quality', fontsize=18)
+        first.insert_text((72, 100), 'Jane Smith, John Doe', fontsize=11)
+        first.insert_text((72, 120), 'Department of Water, Example University', fontsize=10)
+        first.insert_text((72, 135), 'jane@example.com', fontsize=10)
+        if keywords_first:
+            first.insert_text((72, 155), 'Keywords: streams; rainfall', fontsize=10)
+        first.insert_textbox(fitz.Rect(72, 180, 520, 500),
+                             (body_heading + '\n' if body_heading else '') + first_paragraph, fontsize=10)
+        first.insert_text((72, 750), 'Page 1 of 2', fontsize=10)
+        second = pdf.new_page()
+        second.insert_text((72, 40), 'Abstract Submission Form', fontsize=10)
+        second.insert_text((72, 60), 'Page 2 of 2', fontsize=10)
+        second.insert_textbox(fitz.Rect(72, 100, 520, 500),
+                              'Results\n' + last_paragraph, fontsize=10)
+        if not keywords_first:
+            second.insert_text((72, 550), 'Keywords: streams; rainfall', fontsize=10)
+        second.insert_text((72, 600), 'References', fontsize=10)
+        second.insert_text((72, 620), 'A citation that is not part of the abstract.', fontsize=10)
+        pdf.save(path)
+    row = process_pdf(path)
+    expected = ((body_heading + ' ') if body_heading else '') + first_paragraph + ' Results ' + last_paragraph
+    assert row['abstract_description'] == expected
+    assert row['abstract_title'] == 'Urban stream water quality'
+    assert row['abstract_keywords'] == 'streams, rainfall'

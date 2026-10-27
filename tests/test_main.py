@@ -42,6 +42,7 @@ def test_combined_source_is_split_in_bundle_and_original_is_preserved(tmp_path):
     pdfs = output / "handoff_bundle/pdfs"
     assert counts['split_abstracts'] == counts['metadata_rows'] == 2
     assert len(list(pdfs.glob('*.pdf'))) == 2
+    assert len(list(output.rglob('*.pdf'))) == 2
     assert not (pdfs / 'book.pdf').exists()
     assert book.read_bytes() == original
     assert (output / 'intermediate_outputs/abstracts_split/split_abstracts.csv').exists()

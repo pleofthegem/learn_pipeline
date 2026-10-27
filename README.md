@@ -1,7 +1,7 @@
 # IWA Learn Pipeline
 
-The default abstract workflow collects PDFs, splits recognised combined abstract
-books, and extracts metadata. Its handoff bundle contains the individual source
+The default abstract workflow collects PDFs, splits recognised combined
+PDFs, and extracts metadata. Its handoff bundle contains the individual source
 PDFs and their metadata CSV. Webinar processing produces Excel reports.
 
 ## Desktop app

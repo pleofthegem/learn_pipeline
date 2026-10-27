@@ -695,7 +695,7 @@ def extract_keywords(lines: list[str]) -> str:
 def abstract_start(lines: list[str]) -> tuple[int, str]:
     """Find where the abstract description should begin."""
     for index, line in enumerate(lines):
-        if rules.KEYWORDS_RE.match(line):
+        if rules.KEYWORDS_RE.match(line) or rules.SUBMISSION_FORM_HEADER_RE.fullmatch(line):
             continue
         match = rules.ABSTRACT_RE.match(line)
         if match:
@@ -722,6 +722,44 @@ def extract_description(lines: list[str]) -> str:
         description_lines.append(line)
 
     return " ".join(description_lines).strip()
+
+
+def extract_unlabelled_description(lines: list[TextLine], title_end_index: int) -> str:
+    """Find prose after the title/author metadata when no Abstract heading exists.
+
+    Keep subsequent paragraphs and internal sections across pages. Exclude form
+    headers, page counters, and trailing keywords/references. Layout-specific
+    labelled extraction still takes precedence over this fallback.
+    """
+    description = []
+    in_keywords = False
+    for line in lines[title_end_index + 1:]:
+        text = line.text.strip()
+        if rules.KEYWORDS_RE.match(text):
+            if description:
+                break
+            in_keywords = True
+            continue
+        if in_keywords and is_keyword_continuation_text(text) and not is_section_heading(text):
+            continue
+        in_keywords = False
+        if normalise_heading(text) == "references":
+            break
+        if (is_page_number_line(text) or rules.SUBMISSION_FORM_PAGE_RE.fullmatch(text)
+                or rules.SUBMISSION_FORM_HEADER_RE.fullmatch(text)
+                or rules.SUBMISSION_FORM_EVENT_RE.fullmatch(text)):
+            continue
+        if not description:
+            if is_contact_line(text) or is_affiliation_text(text) or is_placeholder_line(text):
+                continue
+            words = text.split()
+            is_prose = len(words) >= rules.UNLABELLED_BODY_MIN_WORDS or (
+                len(words) >= rules.UNLABELLED_SENTENCE_MIN_WORDS and text.endswith((".", "!", "?"))
+            )
+            if not is_prose and not is_section_heading(text):
+                continue
+        description.append(text)
+    return " ".join(description).strip()
 
 
 def submission_form_authors(path: Path) -> str:
@@ -824,11 +862,20 @@ def process_pdf(
     if submission is not None:
         return submission
     title, title_end_index = extract_title(text_lines, path)
+    has_abstract_heading = any(
+        rules.ABSTRACT_RE.match(line)
+        and not rules.KEYWORDS_RE.match(line)
+        and not rules.SUBMISSION_FORM_HEADER_RE.fullmatch(line)
+        for line in lines
+    )
+    description = extract_description(lines) if has_abstract_heading else (
+        extract_unlabelled_description(text_lines, title_end_index) or extract_description(lines)
+    )
     return {
         "filename": path.name,
         "abstract_title": title,
         "abstract_authors": extract_authors(text_lines, title_end_index),
-        "abstract_description": extract_description(lines),
+        "abstract_description": description,
         "abstract_keywords": extract_keywords_from_text_lines(text_lines),
         "additional_info": extract_additional_info(
             text_lines,

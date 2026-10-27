@@ -44,7 +44,7 @@ def run_pipeline(
     else:
         copied = convert_to_pdf.aggregate_files(source, pdfs, suffixes={".pdf"})
     print("Splitting combined PDFs...")
-    splits = split_pdf.split_combined_pdfs(pdfs, pdfs, intermediate / "abstracts_split")
+    splits = split_pdf.prepare_individual_pdfs(pdfs, pdfs, intermediate / "abstracts_split")
     print("Extracting data from abstracts...")
     metadata = extract_abstract_data.extract_abstract_data(
         pdfs, bundle / "abstract_metadata.csv",
