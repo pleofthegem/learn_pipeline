@@ -14,7 +14,6 @@ from scripts.split_pdf import (
     parse_toc,
     parse_args,
     split_combined_pdfs,
-    split_folder,
 )
 
 
@@ -259,7 +258,7 @@ def test_parse_toc_detects_later_content_pages(tmp_path: Path) -> None:
     assert entries[0]["title"] == "First Abstract Title"
 
 
-def test_split_folder_writes_one_pdf_per_toc_entry(tmp_path: Path) -> None:
+def test_split_combined_pdfs_writes_one_pdf_per_toc_entry(tmp_path: Path) -> None:
     """Check that a folder of combined PDFs is split into individual PDFs."""
     input_folder = tmp_path / "combined"
     output_folder = tmp_path / "raw"
@@ -268,7 +267,7 @@ def test_split_folder_writes_one_pdf_per_toc_entry(tmp_path: Path) -> None:
     write_combined_pdf(input_folder / "ebook.pdf")
     (input_folder / "notes.txt").write_text("skip me", encoding="utf-8")
 
-    metadata = split_folder(
+    metadata = split_combined_pdfs(
         input_folder=input_folder,
         output_folder=output_folder,
         staging_folder=staging_folder,
@@ -290,7 +289,7 @@ def test_split_folder_writes_one_pdf_per_toc_entry(tmp_path: Path) -> None:
         assert "Second Abstract" in second[0].get_text()
 
 
-def test_split_folder_writes_presentation_style_pdfs(tmp_path: Path) -> None:
+def test_split_combined_pdfs_writes_presentation_style_pdfs(tmp_path: Path) -> None:
     """Check that presentation-style combined PDFs are split by TOC entries."""
     input_folder = tmp_path / "combined"
     output_folder = tmp_path / "raw"
@@ -298,7 +297,7 @@ def test_split_folder_writes_presentation_style_pdfs(tmp_path: Path) -> None:
     input_folder.mkdir()
     write_presentation_combined_pdf(input_folder / "water_board.pdf")
 
-    metadata = split_folder(
+    metadata = split_combined_pdfs(
         input_folder=input_folder,
         output_folder=output_folder,
         staging_folder=staging_folder,
@@ -403,7 +402,7 @@ def test_find_title_page_returns_none_when_title_is_missing(tmp_path: Path) -> N
         ) is None
 
 
-def test_split_folder_skips_impossible_presentation_ranges(tmp_path: Path) -> None:
+def test_split_combined_pdfs_skips_impossible_presentation_ranges(tmp_path: Path) -> None:
     """Check that missing TOC entries do not create invalid split PDFs."""
     input_folder = tmp_path / "combined"
     output_folder = tmp_path / "raw"
@@ -413,7 +412,7 @@ def test_split_folder_skips_impossible_presentation_ranges(tmp_path: Path) -> No
         input_folder / "water_board.pdf"
     )
 
-    metadata = split_folder(
+    metadata = split_combined_pdfs(
         input_folder=input_folder,
         output_folder=output_folder,
         staging_folder=staging_folder,
@@ -425,14 +424,14 @@ def test_split_folder_skips_impossible_presentation_ranges(tmp_path: Path) -> No
     assert (output_folder / "water_board_O03.pdf").exists()
 
 
-def test_split_folder_supports_same_input_and_output_folder(tmp_path: Path) -> None:
+def test_split_combined_pdfs_supports_same_input_and_output_folder(tmp_path: Path) -> None:
     """Check that same-folder splitting leaves only atomic output PDFs."""
     raw_folder = tmp_path / "raw"
     staging_folder = tmp_path / "split_staging"
     raw_folder.mkdir()
     write_combined_pdf(raw_folder / "ebook.pdf")
 
-    metadata = split_folder(
+    metadata = split_combined_pdfs(
         input_folder=raw_folder,
         output_folder=raw_folder,
         staging_folder=staging_folder,
@@ -446,7 +445,7 @@ def test_split_folder_supports_same_input_and_output_folder(tmp_path: Path) -> N
     assert (staging_folder / "ebook_T1_O2.pdf").exists()
 
 
-def test_split_folder_keeps_unsplit_pdf_with_same_input_and_output(
+def test_split_combined_pdfs_keeps_unsplit_pdf_with_same_input_and_output(
     tmp_path: Path,
 ) -> None:
     """Check that ordinary same-folder PDFs are not removed."""
@@ -458,7 +457,7 @@ def test_split_folder_keeps_unsplit_pdf_with_same_input_and_output(
     ordinary_pdf.save(raw_folder / "ordinary.pdf")
     ordinary_pdf.close()
 
-    metadata = split_folder(
+    metadata = split_combined_pdfs(
         input_folder=raw_folder,
         output_folder=raw_folder,
         staging_folder=staging_folder,
@@ -468,7 +467,7 @@ def test_split_folder_keeps_unsplit_pdf_with_same_input_and_output(
     assert (raw_folder / "ordinary.pdf").exists()
 
 
-def test_split_folder_cleans_staging_folder_before_splitting(tmp_path: Path) -> None:
+def test_split_combined_pdfs_cleans_staging_folder_before_splitting(tmp_path: Path) -> None:
     """Check that each run starts with an empty staging folder."""
     input_folder = tmp_path / "combined"
     output_folder = tmp_path / "raw"
@@ -481,7 +480,7 @@ def test_split_folder_cleans_staging_folder_before_splitting(tmp_path: Path) -> 
     stale_subfolder.mkdir()
     (stale_subfolder / "old.txt").write_text("old", encoding="utf-8")
 
-    split_folder(
+    split_combined_pdfs(
         input_folder=input_folder,
         output_folder=output_folder,
         staging_folder=staging_folder,
@@ -493,7 +492,7 @@ def test_split_folder_cleans_staging_folder_before_splitting(tmp_path: Path) -> 
     assert (output_folder / "ebook_T1_O1.pdf").exists()
 
 
-def test_split_folder_skips_pdfs_without_toc(tmp_path: Path) -> None:
+def test_split_combined_pdfs_skips_pdfs_without_toc(tmp_path: Path) -> None:
     """Check that ordinary PDFs in the folder are ignored."""
     input_folder = tmp_path / "combined"
     output_folder = tmp_path / "raw"
@@ -505,7 +504,7 @@ def test_split_folder_skips_pdfs_without_toc(tmp_path: Path) -> None:
     ordinary_pdf.save(input_folder / "ordinary.pdf")
     ordinary_pdf.close()
 
-    metadata = split_folder(
+    metadata = split_combined_pdfs(
         input_folder=input_folder,
         output_folder=output_folder,
         staging_folder=staging_folder,
@@ -516,7 +515,7 @@ def test_split_folder_skips_pdfs_without_toc(tmp_path: Path) -> None:
 
 
 def test_split_combined_pdfs_writes_metadata_files(tmp_path: Path) -> None:
-    """Check that the public module API derives config and writes metadata."""
+    """Check that batch splitting writes metadata alongside staged PDFs."""
     input_folder = tmp_path / "combined"
     output_folder = tmp_path / "raw"
     staging_folder = tmp_path / "split_staging"
@@ -570,7 +569,7 @@ def test_clean_folder_preserves_gitkeep(tmp_path: Path) -> None:
     assert [path.name for path in folder.iterdir()] == [".gitkeep"]
 
 
-def test_split_folder_rejects_staging_folder_as_output_folder(
+def test_split_combined_pdfs_rejects_staging_folder_as_output_folder(
     tmp_path: Path,
 ) -> None:
     """Check that staging cannot clean the final output folder."""
@@ -579,7 +578,7 @@ def test_split_folder_rejects_staging_folder_as_output_folder(
     input_folder.mkdir()
 
     with pytest.raises(ValueError, match="Staging folder cannot be the output folder"):
-        split_folder(
+        split_combined_pdfs(
             input_folder=input_folder,
             output_folder=output_folder,
             staging_folder=output_folder,
@@ -631,7 +630,7 @@ def write_session_contents_pdf(path: Path, *, book=True, wrong_titles=False, dup
 
 
 def test_session_contents_splits_without_bookmarks_or_page_labels(tmp_path):
-    from scripts.split_pdf import split_pdf, session_contents_info
+    from scripts.split_pdf import split_pdf_if_combined, session_contents_info
     source = tmp_path / "sessions.pdf"
     expected = write_session_contents_pdf(source)
     with fitz.open(source) as pdf:
@@ -644,7 +643,7 @@ def test_session_contents_splits_without_bookmarks_or_page_labels(tmp_path):
     assert is_combined_pdf(source)
     destination = tmp_path / "split"
     destination.mkdir()
-    rows = split_pdf(source, destination)
+    rows = split_pdf_if_combined(source, destination)
     assert len(rows) == 10
     assert [(r["pdf_start_page"], r["pdf_end_page"]) for r in rows] == expected
     for row in rows:

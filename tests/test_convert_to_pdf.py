@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 import fitz
 import pytest
@@ -9,7 +10,6 @@ from scripts.convert_to_pdf import (
     aggregate_files,
     alter_file_name,
     convert_all_to_pdf,
-    convert_file_to_pdf,
     convert_inputs_to_pdfs,
 )
 
@@ -157,95 +157,75 @@ def test_aggregate_files_skips_aggregate_folder_inside_input(tmp_path: Path) -> 
     assert [path.name for path in copied] == ["root.pdf"]
 
 
-def test_convert_file_to_pdf_copies_existing_pdf(tmp_path: Path) -> None:
+def test_convert_all_to_pdf_copies_existing_pdf(tmp_path: Path) -> None:
     """Check that PDF inputs are copied to the output directory."""
     source = tmp_path / "paper.pdf"
     output_dir = tmp_path / "pdfs"
     source.write_text("pdf content", encoding="utf-8")
 
-    result = convert_file_to_pdf(source, output_dir)
+    result = convert_all_to_pdf([source], output_dir)[0]
 
     assert result == output_dir / "paper.pdf"
     assert result.read_text(encoding="utf-8") == "pdf content"
 
 
-def test_convert_file_to_pdf_keeps_pdf_already_in_output_dir(tmp_path: Path) -> None:
+def test_convert_all_to_pdf_keeps_pdf_already_in_output_dir(tmp_path: Path) -> None:
     """Check that PDF inputs are left in place when already in the output folder."""
     source = tmp_path / "paper.pdf"
     source.write_text("pdf content", encoding="utf-8")
 
-    result = convert_file_to_pdf(source, tmp_path)
+    result = convert_all_to_pdf([source], tmp_path)[0]
 
     assert result == source
     assert source.read_text(encoding="utf-8") == "pdf content"
 
 
-def test_convert_file_to_pdf_dispatches_office_suffix(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Check that Office suffixes use the Office conversion behaviour."""
-    source = tmp_path / "paper.docx"
-    output_dir = tmp_path / "pdfs"
-    source.write_text("docx content", encoding="utf-8")
-
-    def fake_convert_office_to_pdf(path: Path, destination: Path) -> Path:
-        assert path == source
-        assert destination == output_dir
-        return destination / "paper.pdf"
-
-    monkeypatch.setattr(
-        convert_to_pdf,
-        "convert_office_to_pdf",
-        fake_convert_office_to_pdf,
-    )
-
-    assert convert_file_to_pdf(source, output_dir) == output_dir / "paper.pdf"
-
-
-def test_convert_file_to_pdf_rejects_unsupported_suffix(tmp_path: Path) -> None:
+def test_convert_all_to_pdf_rejects_unsupported_suffix(tmp_path: Path) -> None:
     """Check that unsupported file types fail clearly."""
     source = tmp_path / "notes.txt"
     source.write_text("notes", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Unsupported file type"):
-        convert_file_to_pdf(source, tmp_path / "pdfs")
+        convert_all_to_pdf([source], tmp_path / "pdfs")
 
 
-def test_convert_file_to_pdf_rejects_presentation_suffix(tmp_path: Path) -> None:
+def test_convert_all_to_pdf_rejects_presentation_suffix(tmp_path: Path) -> None:
     """Check that presentations are not part of the abstract pipeline."""
     source = tmp_path / "slides.pptx"
     source.write_text("slides", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Unsupported file type"):
-        convert_file_to_pdf(source, tmp_path / "pdfs")
+        convert_all_to_pdf([source], tmp_path / "pdfs")
 
 
-def test_convert_file_to_pdf_rejects_powerpoint_pdf(tmp_path: Path) -> None:
+def test_convert_all_to_pdf_rejects_powerpoint_pdf(tmp_path: Path) -> None:
     """Check that presentation-looking PDFs are not copied to abstracts_raw."""
     source = tmp_path / "slides_PPT.pdf"
     source.write_text("slides", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Unsupported PowerPoint PDF"):
-        convert_file_to_pdf(source, tmp_path / "pdfs")
+        convert_all_to_pdf([source], tmp_path / "pdfs")
 
 
-def test_convert_file_to_pdf_rejects_password_protected_pdf(tmp_path: Path) -> None:
+def test_convert_all_to_pdf_rejects_password_protected_pdf(tmp_path: Path) -> None:
     """Check that locked PDFs are not copied to abstracts_raw."""
     source = tmp_path / "locked.pdf"
     write_encrypted_pdf(source)
 
     with pytest.raises(ValueError, match="Unsupported password-protected PDF"):
-        convert_file_to_pdf(source, tmp_path / "pdfs")
+        convert_all_to_pdf([source], tmp_path / "pdfs")
 
 
-def test_convert_all_to_pdf_processes_each_file(tmp_path: Path) -> None:
+def test_convert_all_to_pdf_processes_each_file(tmp_path: Path, monkeypatch) -> None:
     """Check that batch conversion returns one PDF path per input file."""
     first = tmp_path / "first.pdf"
     second = tmp_path / "second.pdf"
     output_dir = tmp_path / "pdfs"
     first.write_text("first", encoding="utf-8")
     second.write_text("second", encoding="utf-8")
+    def unexpected_office_call():
+        pytest.fail("PDF-only batches must not start LibreOffice")
+    monkeypatch.setattr(convert_to_pdf, "office_converter_command", unexpected_office_call)
 
     assert convert_all_to_pdf([first, second], output_dir) == [
         output_dir / "first.pdf",
@@ -259,6 +239,84 @@ def test_convert_all_to_pdf_creates_output_dir_for_empty_input(tmp_path: Path) -
 
     assert convert_all_to_pdf([], output_dir) == []
     assert output_dir.exists()
+
+
+def test_mixed_inputs_use_one_office_process_and_preserve_order(tmp_path, monkeypatch):
+    files = [tmp_path / 'first abstract.docx', tmp_path / 'existing.pdf', tmp_path / 'second.DOC']
+    for index, path in enumerate(files):
+        path.write_text(f'original {index}')
+    original = {path: path.read_bytes() for path in files}
+    output = tmp_path / 'pdf output'
+    calls = []
+    monkeypatch.setattr(convert_to_pdf, 'office_converter_command', lambda: 'soffice')
+    def run(args, **kwargs):
+        calls.append(args)
+        destination = Path(args[args.index('--outdir') + 1])
+        documents = args[args.index('--outdir') + 2:]
+        assert [Path(path).suffix.lower() for path in documents] == ['.docx', '.doc']
+        for source in map(Path, documents):
+            (destination / f'{source.stem}.pdf').write_bytes(source.read_bytes())
+        return subprocess.CompletedProcess(args, 0, stdout='', stderr='')
+    monkeypatch.setattr(convert_to_pdf.subprocess, 'run', run)
+
+    results = convert_all_to_pdf(files, output)
+
+    assert len(calls) == 1
+    assert [path.name for path in results] == ['first abstract.pdf', 'existing.pdf', 'second.pdf']
+    assert [path.read_bytes() for path in results] == [original[path] for path in files]
+    assert {path: path.read_bytes() for path in files} == original
+
+
+def test_batch_preserves_same_stem_word_documents_and_existing_pdf(tmp_path, monkeypatch):
+    files = [tmp_path / 'paper.docx', tmp_path / 'paper.pdf', tmp_path / 'PAPER.doc']
+    for index, path in enumerate(files):
+        path.write_text(f'document {index}')
+    monkeypatch.setattr(convert_to_pdf, 'office_converter_command', lambda: 'soffice')
+    def run(args, **kwargs):
+        destination = Path(args[args.index('--outdir') + 1])
+        for path in map(Path, args[args.index('--outdir') + 2:]):
+            (destination / f'{path.stem}.pdf').write_bytes(path.read_bytes())
+        return subprocess.CompletedProcess(args, 0, stdout='', stderr='')
+    monkeypatch.setattr(convert_to_pdf.subprocess, 'run', run)
+
+    results = convert_all_to_pdf(files, tmp_path / 'output')
+
+    assert len({path.name.casefold() for path in results}) == 3
+    assert [path.read_text() for path in results] == ['document 0', 'document 1', 'document 2']
+    assert results[1].name == 'paper.pdf'
+
+
+def test_batch_reports_missing_conversion_without_publishing_partial_results(tmp_path, monkeypatch):
+    first, second = tmp_path / 'first.docx', tmp_path / 'second.docx'
+    first.touch()
+    second.touch()
+    output = tmp_path / 'output'
+    output.mkdir()
+    (output / 'second.pdf').write_text('previous PDF')
+    monkeypatch.setattr(convert_to_pdf, 'office_converter_command', lambda: 'soffice')
+    def run(args, **kwargs):
+        destination = Path(args[args.index('--outdir') + 1])
+        (destination / 'first.pdf').write_text('converted')
+        return subprocess.CompletedProcess(args, 0, stdout='', stderr='Cannot load second document')
+    monkeypatch.setattr(convert_to_pdf.subprocess, 'run', run)
+
+    with pytest.raises(RuntimeError, match='second.docx') as error:
+        convert_all_to_pdf([first, second], output)
+
+    assert 'Cannot load second document' in str(error.value)
+    assert not (output / 'first.pdf').exists()
+    assert (output / 'second.pdf').read_text() == 'previous PDF'
+
+
+def test_batch_propagates_office_process_failure(tmp_path, monkeypatch):
+    source = tmp_path / 'paper.docx'
+    source.touch()
+    monkeypatch.setattr(convert_to_pdf, 'office_converter_command', lambda: 'soffice')
+    def run(args, **kwargs):
+        raise subprocess.CalledProcessError(1, args, stderr='Conversion failed')
+    monkeypatch.setattr(convert_to_pdf.subprocess, 'run', run)
+    with pytest.raises(subprocess.CalledProcessError):
+        convert_all_to_pdf([source], tmp_path / 'output')
 
 
 def test_convert_inputs_to_pdfs_is_public_pipeline_api(

@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import fitz
 
@@ -91,17 +92,6 @@ def aggregate_destination(aggregate_dir: Path, relative_path: Path) -> Path:
     return aggregate_dir / f"{relative_path.parts[0]}__{relative_path.name}"
 
 
-def convert_file_to_pdf(path: Path, output_dir: Path) -> Path:
-    """Convert one supported file to PDF."""
-    match path.suffix.lower():
-        case ".pdf":
-            return copy_pdf(path, output_dir)
-        case suffix if suffix in OFFICE_SUFFIXES:
-            return convert_office_to_pdf(path, output_dir)
-        case _:
-            raise ValueError(f"Unsupported file type: {path.suffix}")
-
-
 def is_powerpoint_pdf(path: Path) -> bool:
     """Check whether a PDF path looks like it came from a presentation."""
     if path.suffix.lower() != ".pdf":
@@ -139,29 +129,53 @@ def copy_pdf(path: Path, output_dir: Path) -> Path:
     return destination
 
 
-def convert_office_to_pdf(path: Path, output_dir: Path) -> Path:
-    """Convert an Office document to PDF with LibreOffice."""
-    command = office_converter_command()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            command,
-            "--headless",
-            "--convert-to",
-            "pdf",
-            "--outdir",
-            str(output_dir),
-            str(path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+def convert_office_files_to_pdf(files: list[Path], output_dir: Path) -> list[Path]:
+    """Convert all Word documents in one LibreOffice invocation.
 
-    pdf_path = output_dir / f"{path.stem}.pdf"
-    if not pdf_path.exists():
-        raise FileNotFoundError(pdf_path)
-    return pdf_path
+    Work in a temporary folder with a separate LibreOffice profile. Allocate
+    distinct PDF names so Word files cannot overwrite one another or existing
+    PDFs. Verify every result before copying any converted PDFs to output_dir.
+    Return destination paths in input order; leave source documents untouched.
+    """
+    if not files:
+        return []
+    output_dir.mkdir(parents=True, exist_ok=True)
+    used_names = {path.name.casefold() for path in output_dir.iterdir()}
+    destinations = []
+    with TemporaryDirectory(prefix="iwa-office-") as folder:
+        work = Path(folder)
+        sources, converted = work / "sources", work / "converted"
+        sources.mkdir()
+        converted.mkdir()
+        staged = []
+        for path in files:
+            name = f"{path.stem}.pdf"
+            while name.casefold() in used_names:
+                name = alter_file_name(name)
+            used_names.add(name.casefold())
+            source = sources / f"{Path(name).stem}{path.suffix}"
+            shutil.copy2(path, source)
+            staged.append(source)
+            destinations.append(output_dir / name)
+
+        print(f"Converting {len(files)} Word documents to PDF...", flush=True)
+        result = subprocess.run(
+            [
+                office_converter_command(),
+                f"-env:UserInstallation={(work / 'profile').as_uri()}",
+                "--headless", "--convert-to", "pdf", "--outdir", str(converted),
+                *(str(path) for path in staged),
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        missing = [original.name for original, target in zip(files, destinations)
+                   if not (converted / target.name).is_file()]
+        if missing:
+            details = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+            raise RuntimeError(f"LibreOffice did not produce PDFs for: {', '.join(missing)}\n{details}")
+        for target in destinations:
+            shutil.copy2(converted / target.name, target)
+    return destinations
 
 
 def office_converter_command() -> str:
@@ -174,9 +188,20 @@ def office_converter_command() -> str:
 
 
 def convert_all_to_pdf(files: list[Path], output_dir: Path) -> list[Path]:
-    """Convert a list of files to PDF."""
+    """Copy PDF inputs and batch-convert Word inputs, returning paths in input order."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    return [convert_file_to_pdf(path, output_dir) for path in files]
+    office_files = []
+    converted = {}
+    for path in files:
+        suffix = path.suffix.lower()
+        if suffix == ".pdf":
+            converted[path] = copy_pdf(path, output_dir)
+        elif suffix in OFFICE_SUFFIXES:
+            office_files.append(path)
+        else:
+            raise ValueError(f"Unsupported file type: {path.suffix}")
+    converted.update(zip(office_files, convert_office_files_to_pdf(office_files, output_dir)))
+    return [converted[path] for path in files]
 
 
 def convert_inputs_to_pdfs(

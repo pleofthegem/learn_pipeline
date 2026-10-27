@@ -35,26 +35,20 @@ def split_combined_pdfs(
     output_folder: Path = Path(rules.OUTPUT_FOLDER),
     staging_folder: Path = Path(rules.SPLIT_FOLDER),
 ) -> list[dict[str, object]]:
-    """Run the split step using derived pipeline defaults."""
-    input_folder = Path(input_folder)
-    output_folder = Path(output_folder)
-    staging_folder = Path(staging_folder)
-    metadata = split_folder(
-        input_folder=input_folder,
-        output_folder=output_folder,
-        staging_folder=staging_folder,
-    )
-    write_metadata_csv(metadata, staging_folder / rules.METADATA_CSV)
-    write_metadata_json(metadata, staging_folder / rules.METADATA_JSON)
-    return metadata
+    """Split recognised books in a folder and export their split metadata.
 
+    Scan only PDFs directly inside input_folder. Clear staging_folder (except
+    .gitkeep), write individual abstracts there, then copy them to output_folder.
+    Remove combined-book copies from output_folder only after splitting; ordinary
+    PDFs are left untouched and are not copied when input and output differ.
+    Input and output may be the same working folder, in which case successfully
+    split books are replaced there. Keep original source files elsewhere.
 
-def split_folder(
-    input_folder: Path,
-    output_folder: Path = Path(rules.OUTPUT_FOLDER),
-    staging_folder: Path = Path(rules.SPLIT_FOLDER),
-) -> list[dict[str, object]]:
-    """Split every combined PDF in a folder."""
+    Return one metadata row per generated PDF, including its source filename,
+    abstract ID, title, printed start page, 1-based inclusive PDF page range,
+    page count and output filename. Also write these rows to split_abstracts.csv
+    and split_abstracts.json in staging_folder, even when no PDFs were split.
+    """
     input_folder = Path(input_folder)
     output_folder = Path(output_folder)
     staging_folder = Path(staging_folder)
@@ -83,7 +77,7 @@ def split_folder(
 
     split_source_paths: list[Path] = []
     for pdf_path in pdf_paths:
-        split_metadata = split_pdf(
+        split_metadata = split_pdf_if_combined(
             pdf_path=pdf_path,
             output_folder=staging_folder,
         )
@@ -93,14 +87,25 @@ def split_folder(
 
     copy_split_pdfs(staging_folder, output_folder)
     remove_split_source_pdfs(split_source_paths, output_folder)
+    write_metadata_csv(metadata, staging_folder / rules.METADATA_CSV)
+    write_metadata_json(metadata, staging_folder / rules.METADATA_JSON)
     return metadata
 
 
-def split_pdf(
+def split_pdf_if_combined(
     pdf_path: Path,
     output_folder: Path,
 ) -> list[dict[str, object]]:
-    """Split one combined PDF into individual abstract PDFs."""
+    """Inspect one PDF and write individual abstracts if its contents are recognised.
+
+    Use the supported contents formats to find abstract page ranges. Write each
+    range into the existing output_folder as <source_stem>_<abstract_id>.pdf.
+    Leave the source PDF untouched; do not clear folders or write CSV/JSON files.
+
+    Return one split-metadata row per generated PDF, with 1-based inclusive page
+    ranges. Return an empty list if the format is unrecognised or no valid ranges
+    can be extracted. PDF read/write errors propagate to the caller.
+    """
     with fitz.open(pdf_path) as pdf:
         combined_info = combined_pdf_info(pdf)
         if combined_info is None:

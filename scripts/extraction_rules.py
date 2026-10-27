@@ -16,6 +16,28 @@ TITLE_FONT_TOLERANCE = 0.1
 KEYWORD_FONT_TOLERANCE = 0.5
 EVENT_ACRONYMS = ("IWA", "AI", "UN", "UK", "USA")
 
+# Outer fields of the boxed abstract submission form. Headings within the
+# abstract (e.g. Methodology or Conclusion) belong to its description.
+SUBMISSION_FORM_SECTION_RE = re.compile(
+    r"^(?:"
+    r"(?P<title>PAPER\s+TITLE)|"
+    r"(?P<authors>AUTHORS?\s+AND\s+AFFILIATIONS)(?:\s*\(.*\))?|"
+    r"(?P<presenter>PRESENTER\s+AND\s+EMAIL\s+ADDRESS)|"
+    r"(?P<abstract>ABSTRACT)(?:\s*\[.*\])?|"
+    r"(?P<presentation>PREFERRED\s+PRESENTATION\s+TYPE)|"
+    r"(?P<theme>THEME)(?:\s*\(.*\))?|"
+    r"(?P<topic>SPECIAL\s+TOPIC)(?:\s*\(.*\))?|"
+    r"(?P<keywords>(?:ABSTRACT\s+)?(?:KEYWORDS?|KEY\s+WORDS))(?:\s*\[.*\])?"
+    r")\s*:?$",
+    re.IGNORECASE,
+)
+SUBMISSION_FORM_PAGE_RE = re.compile(r"^Page\s+\d+\s+of\s+\d+$", re.IGNORECASE)
+SUBMISSION_FORM_HEADER_RE = re.compile(r"^(?:.*\s+)?Abstract Submission Form$", re.IGNORECASE)
+SUBMISSION_FORM_EVENT_RE = re.compile(
+    r"^(?P<name>.+\b(?:Conference|Congress|Symposium)\s+(?:19|20)\d{2})\s+(?P<place>.+)$",
+    re.IGNORECASE,
+)
+
 CSV_FIELDNAMES: list[str] = [
     "filename",
     "abstract_title",
@@ -40,6 +62,8 @@ SECTION_HEADINGS: set[str] = {
     "conclusions",
     "keywords",
     "key words",
+    "abstract keywords",
+    "abstract key words",
     "the background of research",
     "nature of issue",
     "findings and results",
@@ -54,7 +78,8 @@ WATER_BOARD_HEADER = "national water supply and drainage board sri lanka"
 WATER_BOARD_TITLE_NOISE_LINES: set[str] = {"qs"}
 
 KEYWORDS_RE = re.compile(
-    r"^\s*(?:keywords?|key\s+words?|index\s+terms)\s*[:.\-–—]?\s*(.*)$",
+    r"^\s*(?:(?:abstract\s+)?(?:keywords?|key\s+words?)|index\s+terms)\b"
+    r"(?:\s*\[[^\]]*\])?\s*[:.\-–—]?\s*(.*)$",
     re.IGNORECASE,
 )
 ABSTRACT_RE = re.compile(

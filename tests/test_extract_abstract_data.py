@@ -665,3 +665,18 @@ def test_extract_abstract_data_is_public_pipeline_api(
     assert rows[0]["additional_info"]["place"] == "Default place"
     assert csv_path.exists()
     assert json_path.exists()
+
+
+@pytest.mark.parametrize("heading", [
+    "Abstract keywords", "ABSTRACT KEYWORDS [maximum 5]", "Abstract key words:",
+])
+def test_abstract_keyword_heading_before_abstract_is_not_description(tmp_path, heading):
+    path = tmp_path / "keywords.pdf"
+    write_sample_pdf(path, [
+        "Water quality research", "Jane Smith", heading,
+        "Southern Bangladesh; Micropollutants; Groundwater; Climate",
+        "Resilience", "Abstract", "The study compares water quality.",
+    ])
+    row = process_pdf(path)
+    assert row["abstract_keywords"] == "Southern Bangladesh, Micropollutants, Groundwater, Climate Resilience"
+    assert row["abstract_description"] == "The study compares water quality."

@@ -50,12 +50,15 @@ def test_combined_source_is_split_in_bundle_and_original_is_preserved(tmp_path):
 def test_full_mode_converts_word_and_exports_anonymised_text(sample_input_dir, tmp_path, monkeypatch):
     output = tmp_path / 'output'
     monkeypatch.setattr(pipeline.convert_to_pdf, 'office_converter_command', lambda: 'soffice')
-    def convert_word(path, output_dir):
-        assert path.suffix == '.docx'
-        target = output_dir / f'{path.stem}.pdf'
-        shutil.copy2(sample_input_dir / 'abstract_001.pdf', target)
-        return target
-    monkeypatch.setattr(pipeline.convert_to_pdf, 'convert_office_to_pdf', convert_word)
+    def convert_words(paths, output_dir):
+        targets = []
+        for path in paths:
+            assert path.suffix == '.docx'
+            target = output_dir / f'{path.stem}.pdf'
+            shutil.copy2(sample_input_dir / 'abstract_001.pdf', target)
+            targets.append(target)
+        return targets
+    monkeypatch.setattr(pipeline.convert_to_pdf, 'convert_office_files_to_pdf', convert_words)
     counts = pipeline.run_pipeline(sample_input_dir, output, full=True)
     assert counts['converted_pdfs'] == counts['metadata_rows'] == counts['anonymised_pdfs'] == 3
     intermediate = output / 'intermediate_outputs'

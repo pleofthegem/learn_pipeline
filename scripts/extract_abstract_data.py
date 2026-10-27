@@ -695,6 +695,8 @@ def extract_keywords(lines: list[str]) -> str:
 def abstract_start(lines: list[str]) -> tuple[int, str]:
     """Find where the abstract description should begin."""
     for index, line in enumerate(lines):
+        if rules.KEYWORDS_RE.match(line):
+            continue
         match = rules.ABSTRACT_RE.match(line)
         if match:
             return index + 1, match.group(1).strip()
@@ -722,6 +724,92 @@ def extract_description(lines: list[str]) -> str:
     return " ".join(description_lines).strip()
 
 
+def submission_form_authors(path: Path) -> str:
+    """Read names from numbered author-table rows, excluding affiliation cells.
+
+    Restrict table detection to the authors field. Joining a name cell's lines
+    preserves wrapped surnames without incorporating adjacent affiliations.
+    """
+    names = []
+    in_authors = False
+    with fitz.open(path) as pdf:
+        for page in pdf:
+            top, bottom = 0, page.rect.height
+            for block in page.get_text("dict")["blocks"]:
+                for line in block.get("lines", []):
+                    text = "".join(span["text"] for span in line["spans"]).strip()
+                    match = rules.SUBMISSION_FORM_SECTION_RE.fullmatch(text)
+                    if not match:
+                        continue
+                    if match.lastgroup == "authors":
+                        in_authors = True
+                        top = line["bbox"][3]
+                    elif in_authors:
+                        bottom = line["bbox"][1]
+                        in_authors = False
+                        break
+                if bottom < page.rect.height:
+                    break
+            if not in_authors and bottom == page.rect.height:
+                continue
+            clip = fitz.Rect(0, top, page.rect.width, bottom)
+            for table in page.find_tables(clip=clip).tables:
+                for row in table.extract():
+                    if len(row) >= 3 and (row[0] or "").strip().isdigit() and row[1]:
+                        names.append(clean_author_name(" ".join(row[1].split())))
+    return ", ".join(names)
+
+
+def extract_submission_form(
+    path: Path,
+    lines: list[str],
+    default_additional_info: AdditionalInfo | None = None,
+) -> Row | None:
+    """Read labelled submission-form fields, or return None for other layouts.
+
+    Require the title, authors and abstract labels together. Abstract content
+    continues across pages until another outer form field; page furniture and
+    the conference banner are excluded. Theme/topic are not inferred keywords.
+    """
+    sections: dict[str, list[str]] = {}
+    current = None
+    event = None
+    for line in lines:
+        conference = rules.SUBMISSION_FORM_EVENT_RE.fullmatch(line)
+        if conference:
+            event = conference
+            continue
+        if (rules.SUBMISSION_FORM_PAGE_RE.fullmatch(line)
+                or rules.SUBMISSION_FORM_HEADER_RE.fullmatch(line)):
+            continue
+        keyword = rules.KEYWORDS_RE.match(line)
+        if keyword:
+            current = "keywords"
+            sections.setdefault(current, []).append(keyword.group(1))
+            continue
+        heading = rules.SUBMISSION_FORM_SECTION_RE.fullmatch(line)
+        if heading:
+            current = heading.lastgroup
+            sections.setdefault(current, [])
+        elif current:
+            sections[current].append(line)
+    if not {"title", "authors", "abstract"}.issubset(sections):
+        return None
+
+    defaults = default_additional_info or {}
+    return {
+        "filename": path.name,
+        "abstract_title": compact_info_text(" ".join(sections["title"])),
+        "abstract_authors": submission_form_authors(path),
+        "abstract_description": compact_info_text(" ".join(sections["abstract"])),
+        "abstract_keywords": standardise_keywords(" ".join(sections.get("keywords", []))),
+        "additional_info": {
+            key: compact_info_text(event.group(key) if event else defaults.get(key, ""))
+            for key in ("name", "place")
+        },
+    }
+
+
 def process_pdf(
     path: Path,
     default_additional_info: AdditionalInfo | None = None,
@@ -732,6 +820,9 @@ def process_pdf(
 
     text_lines = extract_text_lines_from_pdf(path)
     lines = [line.text for line in text_lines]
+    submission = extract_submission_form(path, lines, default_additional_info)
+    if submission is not None:
+        return submission
     title, title_end_index = extract_title(text_lines, path)
     return {
         "filename": path.name,
