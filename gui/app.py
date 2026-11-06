@@ -10,7 +10,10 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from tkinterdnd2 import TkinterDnD, DND_FILES, COPY, REFUSE_DROP
 
-from .runner import ROOT, SUFFIXES, input_folder, store_inputs, useful_outputs, run_job, current_inputs
+from .runner import (
+    ROOT, SUFFIXES, input_folder, store_inputs, useful_outputs, run_job,
+    current_inputs, clear_inputs, clear_outputs,
+)
 
 
 class Writer:
@@ -54,6 +57,8 @@ class Workflow(ttk.Frame):
         ttk.Label(input_bar, textvariable=self.count, foreground="#536579").pack(side="left")
         self.folder_button = ttk.Button(input_bar, text="Choose folder…", command=self.browse_folder)
         self.folder_button.pack(side="right")
+        self.clear_input_button = ttk.Button(input_bar, text="Clear input", command=lambda: self.clear_files("input"))
+        self.clear_input_button.pack(side="right", padx=(0, 8))
         input_frame = ttk.Frame(self)
         input_frame.grid(row=3, column=0, sticky="nsew", pady=(8, 0))
         self.inputs = tk.Listbox(input_frame, height=4, relief="flat", background="white",
@@ -75,9 +80,11 @@ class Workflow(ttk.Frame):
         output_bar.grid(row=6, column=0, sticky="ew", pady=(22, 8))
         output_bar.columnconfigure(0, weight=1)
         ttk.Label(output_bar, text=f"Outputs · {output}", foreground="#536579",
-                  wraplength=370).grid(row=0, column=0, sticky="w")
+                  wraplength=250).grid(row=0, column=0, sticky="w")
         ttk.Button(output_bar, text="Open output folder", command=self.open_output_folder).grid(
             row=0, column=1, sticky="e", padx=(12, 0))
+        self.clear_output_button = ttk.Button(output_bar, text="Clear output", command=lambda: self.clear_files("output"))
+        self.clear_output_button.grid(row=0, column=2, sticky="e", padx=(8, 0))
         frame = ttk.Frame(self)
         frame.grid(row=7, column=0, sticky="nsew")
         self.results = tk.Listbox(frame, height=8, relief="flat", background="white",
@@ -110,6 +117,24 @@ class Workflow(ttk.Frame):
         for path in useful_outputs(self.mode):
             self.results.insert("end", str(path.relative_to(ROOT)))
         self.run_button.configure(state="disabled" if self.app.busy else "normal")
+        for button in (self.clear_input_button, self.clear_output_button):
+            button.configure(state="disabled" if self.app.busy else "normal")
+
+    def clear_files(self, target):
+        if self.app.busy:
+            return
+        try:
+            if target == "input":
+                clear_inputs(self.mode)
+                self.status.set("Input folder cleared.")
+            else:
+                clear_outputs(self.mode)
+                self.status.set("Output folder cleared.")
+        except OSError as exc:
+            self.status.set(f"Could not completely clear {target} folder.")
+            messagebox.showerror(f"Could not clear {target} folder", str(exc), parent=self)
+        finally:
+            self.refresh()
 
     def enter(self, event):
         if self.app.busy:

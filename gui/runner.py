@@ -4,6 +4,7 @@ import shutil
 
 from scripts.config import ROOT
 from scripts.conversion_rules import SUPPORTED_SUFFIXES
+from scripts.clear_outputs import clear_folder
 
 SUFFIXES = {"abstracts": SUPPORTED_SUFFIXES, "webinar": {".csv"}}
 
@@ -23,6 +24,16 @@ def collect_inputs(mode: str, paths: list[Path]) -> list[Path]:
 
 def input_folder(mode):
     return ROOT / ("input" if mode == "abstracts" else "webinar/input")
+
+
+def clear_inputs(mode):
+    """Empty this workflow's imported inputs, preserving .gitkeep."""
+    return clear_folder(input_folder(mode))
+
+
+def clear_outputs(mode):
+    """Empty generated outputs for this workflow, including abstract intermediates."""
+    return clear_folder(ROOT / ("output" if mode == "abstracts" else "webinar/output"))
 
 
 def store_inputs(mode, paths):

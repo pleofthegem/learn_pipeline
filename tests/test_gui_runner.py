@@ -97,3 +97,46 @@ def test_empty_folder_import_reports_no_supported_files(tmp_path, monkeypatch):
     source.mkdir()
     with pytest.raises(ValueError, match="No supported"):
         runner.store_inputs("abstracts", [source])
+
+
+@pytest.mark.parametrize('mode', ['abstracts', 'webinar'])
+def test_clear_inputs_removes_nested_imports_only(tmp_path, monkeypatch, mode):
+    monkeypatch.setattr(runner, 'ROOT', tmp_path / 'app')
+    folder = runner.input_folder(mode)
+    nested = folder / 'nested'
+    nested.mkdir(parents=True)
+    (nested / 'imported.pdf').write_text('imported')
+    (folder / '.gitkeep').touch()
+    original = tmp_path / 'original.pdf'
+    original.write_text('source')
+    output = runner.ROOT / ('output' if mode == 'abstracts' else 'webinar/output')
+    output.mkdir(parents=True)
+    (output / 'result.csv').write_text('result')
+    runner.clear_inputs(mode)
+    assert list(folder.iterdir()) == [folder / '.gitkeep']
+    assert original.read_text() == 'source'
+    assert (output / 'result.csv').read_text() == 'result'
+
+
+@pytest.mark.parametrize('mode', ['abstracts', 'webinar'])
+def test_clear_outputs_removes_only_selected_workflow_outputs(tmp_path, monkeypatch, mode):
+    monkeypatch.setattr(runner, 'ROOT', tmp_path)
+    abstract_outputs = tmp_path / 'output'
+    webinar_outputs = tmp_path / 'webinar/output'
+    for root in [abstract_outputs, webinar_outputs]:
+        (root / 'nested').mkdir(parents=True)
+        (root / 'nested/result.csv').write_text('result')
+        (root / '.gitkeep').touch()
+    for input_mode in ['abstracts', 'webinar']:
+        folder = runner.input_folder(input_mode)
+        folder.mkdir(parents=True)
+        (folder / 'source.pdf').write_text('input')
+    regions = tmp_path / 'webinar/Regions.csv'
+    regions.write_text('reference data')
+    runner.clear_outputs(mode)
+    cleared, retained = ((abstract_outputs, webinar_outputs) if mode == 'abstracts'
+                         else (webinar_outputs, abstract_outputs))
+    assert list(cleared.iterdir()) == [cleared / '.gitkeep']
+    assert (retained / 'nested/result.csv').exists()
+    assert regions.read_text() == 'reference data'
+    assert all((runner.input_folder(m) / 'source.pdf').exists() for m in ['abstracts', 'webinar'])

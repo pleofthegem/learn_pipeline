@@ -32,10 +32,14 @@ executable.
    in subfolders. Imports copy files into `input/` or `webinar/input/` and leave
    originals untouched. Duplicate names receive a numbered suffix.
 3. Check the input list and click **Run**. Existing inputs remain in the batch;
-   remove unwanted inputs using your file manager before starting another batch.
+   use **Clear input** to empty the selected workflow's input folder before
+   starting another batch. Original files outside that folder are preserved.
 4. The output list shows the abstract bundle's PDFs and CSV, or all webinar
    Excel workbooks. **Open output folder** opens the bundle or webinar output
    folder in your system file manager.
+5. **Clear output** empties the selected workflow's output folder. For abstracts,
+   this includes the handoff bundle and intermediate outputs. Clearing input and
+   output are separate actions; both buttons are disabled during processing.
 
 The GUI automatically converts Word inputs before splitting and extraction.
 Anonymised text exports are available through the optional full command below.
