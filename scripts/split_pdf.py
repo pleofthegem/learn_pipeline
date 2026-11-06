@@ -197,7 +197,66 @@ def read_combined_pdf_contents(pdf: fitz.Document) -> CombinedPdfContents | None
                 return CombinedPdfContents(first_page, last_page, entries, offset)
             except ValueError:
                 pass
-    return parse_session_contents(pdf)
+    return parse_session_contents(pdf) or parse_positioned_contents(pdf)
+
+
+def parse_positioned_contents(pdf: fitz.Document) -> CombinedPdfContents | None:
+    """Read right-aligned references and title text in a single-column contents.
+
+    Match title spans to the reference's font size, retaining italic scientific
+    names and excluding smaller author lines. This also handles misnumbered or
+    unnumbered titles: page references, rather than list numbering, define rows.
+    """
+    first = next((n for n, page in enumerate(pdf, 1)
+                  if rules.CONTENTS_HEADING_RE.search(page.get_text())), None)
+    if first is None:
+        return None
+    entries = []
+    last = first
+    for number in range(first, len(pdf) + 1):
+        page = pdf[number - 1]
+        refs = sorted([word for word in page.get_text('words')
+                       if word[0] > page.rect.width * .8 and word[4].isdigit()
+                       and word[1] < page.rect.height * .9], key=lambda word: word[1])
+        if not refs:
+            break
+        lines = [line for block in page.get_text('dict')['blocks']
+                 for line in block.get('lines', [])]
+        for i, ref in enumerate(refs):
+            reference_spans = [span for line in lines for span in line['spans']
+                               if abs(span['bbox'][1] - ref[1]) < 1
+                               and span['bbox'][0] <= ref[0] + 1
+                               and span['bbox'][2] >= ref[2] - 1]
+            if not reference_spans:
+                return None
+            size = reference_spans[0]['size']
+            bottom = refs[i + 1][1] - .5 if i + 1 < len(refs) else page.rect.height * .92
+            parts = []
+            for line in sorted(lines, key=lambda line: (line['bbox'][1], line['bbox'][0])):
+                if ref[1] - .5 <= line['bbox'][1] < bottom:
+                    text = ''.join(span['text'] for span in line['spans']
+                                   if abs(span['size'] - size) < .5
+                                   and span['bbox'][0] < ref[0] - 1).strip()
+                    if text:
+                        parts.append(text)
+            title = re.sub(r'^\d+\.\s*', '', ' '.join(parts))
+            title = re.sub(r'\s+\d+$', '', title).strip()
+            if not title:
+                return None
+            entries.append(ContentsEntry(f'A{len(entries) + 1:03d}', title, int(ref[4])))
+        last = number
+    if len(entries) < 2 or any(b.printed_start_page < a.printed_start_page
+                               for a, b in zip(entries, entries[1:])):
+        return None
+    try:
+        offset = calculate_printed_page_offset(pdf, entries, last)
+    except ValueError:
+        return None
+    end = next((number for number in range(len(pdf), last, -1)
+                if any(word[4] == str(number - offset)
+                       and word[1] > pdf[number - 1].rect.height * .9
+                       for word in pdf[number - 1].get_text('words'))), None)
+    return CombinedPdfContents(first, last, entries, offset, content_end_page=end)
 
 
 def parse_session_contents(pdf: fitz.Document) -> CombinedPdfContents | None:

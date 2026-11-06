@@ -684,7 +684,7 @@ def test_abstract_keyword_heading_before_abstract_is_not_description(tmp_path, h
 
 @pytest.mark.parametrize('body_heading', ['', 'Introduction'])
 @pytest.mark.parametrize('keywords_first', [False, True])
-def test_unlabelled_abstract_keeps_body_across_pages(tmp_path, body_heading, keywords_first):
+def test_unlabelled_body_is_not_extracted_as_an_abstract(tmp_path, body_heading, keywords_first):
     path = tmp_path / 'paper.pdf'
     first_paragraph = (
         'We measured seasonal water quality changes across several streams to understand '
@@ -716,7 +716,58 @@ def test_unlabelled_abstract_keeps_body_across_pages(tmp_path, body_heading, key
         second.insert_text((72, 620), 'A citation that is not part of the abstract.', fontsize=10)
         pdf.save(path)
     row = process_pdf(path)
-    expected = ((body_heading + ' ') if body_heading else '') + first_paragraph + ' Results ' + last_paragraph
-    assert row['abstract_description'] == expected
+    assert row['abstract_description'] == ''
     assert row['abstract_title'] == 'Urban stream water quality'
     assert row['abstract_keywords'] == 'streams, rainfall'
+
+
+@pytest.mark.parametrize('prefix', ['7147445', '149742', '714956-1', 'ICNSS#10', 'ICNSS # 10', 'T1_O1'])
+def test_submission_id_is_removed_before_title_selection(tmp_path, prefix):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 72), prefix, fontsize=18)
+        for y, text in [(100, 'A long research title'), (125, 'continued on a second line'),
+                        (150, 'continued on a third line'), (175, 'and finished on a fourth line')]:
+            page.insert_text((72, y), text, fontsize=16)
+        page.insert_text((72, 210), 'Jane Smith1, John Doe2', fontsize=11)
+        page.insert_text((72, 240), 'This is unlabelled body text with enough words to pass the old fallback.')
+        pdf.save(path)
+    row = process_pdf(path)
+    assert row['abstract_title'] == ('A long research title continued on a second line '
+                                     'continued on a third line and finished on a fourth line')
+    assert row['abstract_description'] == ''
+
+
+@pytest.mark.parametrize('title,expected', [
+    ('7147445 Research on water quality', 'Research on water quality'),
+    ('ICNSS#10: Research on water quality', 'Research on water quality'),
+    ('714956-1 — Research on water quality', 'Research on water quality'),
+    ('2026 Advances in sanitation', '2026 Advances in sanitation'),
+    ('1. Research on water quality', '1. Research on water quality'),
+    ('Research using dataset 7147445', 'Research using dataset 7147445'),
+    ('12345678 Research on water quality', '12345678 Research on water quality'),
+])
+def test_clean_title_prefix_preserves_unrecognised_numbers(title, expected):
+    from scripts.extract_abstract_data import clean_title_prefix
+    assert clean_title_prefix(title) == expected
+
+
+@pytest.mark.parametrize('heading,expected', [
+    ('Abstract', 'A clearly labelled summary.'),
+    ('Abstract: A clearly labelled summary.', 'A clearly labelled summary.'),
+    ('Abstract Book', ''),
+    ('Abstracted research data', ''),
+    ('Introduction', ''),
+    ('Summary', ''),
+])
+def test_description_requires_explicit_abstract_label(tmp_path, heading, expected):
+    path = tmp_path / 'paper.pdf'
+    paragraphs = ['Water quality research', 'Jane Smith', heading]
+    if heading != 'Abstract: A clearly labelled summary.':
+        paragraphs.append('A clearly labelled summary.')
+    paragraphs.append('Keywords: water; sanitation')
+    write_sample_pdf(path, paragraphs)
+    row = process_pdf(path)
+    assert row['abstract_description'] == expected
+    assert row['abstract_keywords'] == 'water, sanitation'

@@ -167,3 +167,72 @@ def test_missing_office_does_not_clear_previous_bundle_for_default_word_run(tmp_
         pipeline.run_pipeline(source, output)
     assert previous.read_text() == 'previous metadata'
     assert word.read_bytes() == b'original Word document'
+
+
+def write_shared_page_book(path):
+    import fitz
+    with fitz.open() as pdf:
+        toc = pdf.new_page()
+        toc.insert_text((72, 80), 'CONTENTS', fontsize=16)
+        for y, title, ref in [(120, '1. First Research Title', '1'),
+                               (180, '2. Second Research Title', '2')]:
+            toc.insert_text((72, y), title, fontsize=12)
+            toc.insert_text((510, y), ref, fontsize=12)
+        for number in range(1, 4):
+            page = pdf.new_page()
+            page.insert_text((72, 50), 'Conference header')
+            page.insert_text((290, 790), str(number))
+            if number == 1:
+                page.insert_text((72, 90), '7147445')
+                page.insert_text((72, 120), 'First Research Title', fontsize=16, fontname='hebo')
+                page.insert_text((72, 150), 'Jane Doe1, Other Author2', fontname='hebo')
+                page.insert_text((72, 200), 'First research body')
+            elif number == 2:
+                page.insert_text((72, 90), 'First proposal continuation')
+                page.insert_text((72, 140), '************')
+                page.insert_text((72, 180), '7149502')
+                page.insert_text((72, 210), 'Second Research Title', fontsize=16, fontname='hebo')
+                page.insert_text((72, 240), 'John Roe1, Other Author2', fontname='hebo')
+                page.insert_text((72, 280), 'Second research body')
+            else:
+                page.insert_text((72, 90), 'Second proposal continuation')
+                page.insert_text((72, 140), '************')
+        cover = pdf.new_page()
+        cover.insert_text((72, 90), 'Back cover')
+        pdf.save(path)
+
+
+def test_shared_page_book_is_isolated_then_extracted_with_ordinary_input(tmp_path):
+    import fitz
+    source = tmp_path / 'input'
+    source.mkdir()
+    book = source / 'Abstract Book.pdf'
+    write_shared_page_book(book)
+    original = book.read_bytes()
+    with fitz.open() as ordinary:
+        page = ordinary.new_page()
+        page.insert_text((72, 90), 'Individual abstract')
+        ordinary.save(source / 'ordinary.pdf')
+    output = tmp_path / 'output'
+    counts = pipeline.run_pipeline(source, output)
+    pdfs = output / 'handoff_bundle/pdfs'
+    assert counts['isolated_abstracts'] == 2
+    assert counts['split_abstracts'] == 0
+    assert counts['metadata_rows'] == 3
+    assert book.read_bytes() == original
+    assert {p.name for p in pdfs.iterdir()} == {
+        'ordinary.pdf', 'Abstract_Book_7147445_J.Doe.pdf', 'Abstract_Book_7149502_J.Roe.pdf'}
+    with (output / 'handoff_bundle/abstract_metadata.csv').open(encoding='utf-8-sig', newline='') as stream:
+        rows = list(csv.DictReader(stream))
+    assert {r['filename'] for r in rows} == {p.name for p in pdfs.iterdir()}
+    reports = output / 'intermediate_outputs/abstracts_isolated/Abstract_Book'
+    summary = json.loads((reports / 'isolation_summary.json').read_text())
+    validation = json.loads((reports / 'contents_validation.json').read_text())
+    assert validation['contents_abstract_count'] == validation['produced_pdf_count'] == 2
+    assert summary['abstracts'][0]['printed_start_page'] == 1
+    with fitz.open(pdfs / 'Abstract_Book_7147445_J.Doe.pdf') as pdf:
+        text = ''.join(p.get_text() for p in pdf)
+        assert 'First proposal continuation' in text and 'Second Research Title' not in text
+    with fitz.open(pdfs / 'Abstract_Book_7149502_J.Roe.pdf') as pdf:
+        text = ''.join(p.get_text() for p in pdf)
+        assert 'Second proposal continuation' in text and 'Back cover' not in text

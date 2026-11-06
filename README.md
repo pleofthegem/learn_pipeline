@@ -1,7 +1,7 @@
 # IWA Learn Pipeline
 
 The default abstract workflow accepts PDF and Word files, converts Word files to
-PDF when present, splits recognised combined PDFs, and extracts metadata.
+PDF when present, splits recognised combined PDFs (or isolates proposals sharing a page), and extracts metadata.
 Its handoff bundle contains the individual source
 PDFs and their metadata CSV. Webinar processing produces Excel reports.
 
@@ -45,7 +45,11 @@ Windows Explorer into the WSL app is not supported. For Windows use, run the
 Click **Open output folder** after processing. For abstracts, share the whole
 `output/handoff_bundle/` folder: it contains `abstract_metadata.csv` and the
 corresponding PDFs in `pdfs/`. The CSV includes titles, authors, abstract text,
-keywords, and conference information when available.
+keywords, and conference information when available. Abstract descriptions are
+extracted only from explicitly labelled abstract sections; unlabelled body text,
+introductions and summaries leave that field blank. Recognised leading submission
+IDs are removed from titles using `TITLE_ID_PREFIX_PATTERNS` in
+`scripts/extraction_rules.py`; add a pattern there for a new ID format.
 
 Webinar Excel reports are saved in `webinar/output/`.
 
@@ -127,3 +131,66 @@ The master workbook, `master_webinar_summary.xlsx`, combines the per-report
 summaries with one row per attendee per webinar. Its additional `Webinar` column
 comes from the workbook filename before `Attendee report`, retaining leading
 dates and removing trailing markers such as `(clean)`.
+
+## Isolating proposals that share pages
+
+The pipeline automatically isolates proposals when a standalone asterisk separator
+has body content above it and a contents-listed title below it on the same page.
+Other recognised combined books use ordinary page splitting. Both routes write
+individual PDFs directly into `output/handoff_bundle/pdfs/`, then the existing
+extractor creates `output/handoff_bundle/abstract_metadata.csv`. The GUI and
+`python -m scripts.main` use this same workflow.
+
+Isolation copies original PDF regions without rasterising or rebuilding text.
+It validates the isolated count, titles, order, and starting pages against the
+contents before writing PDFs. Isolation summaries and contents validation reports
+are saved under `output/intermediate_outputs/abstracts_isolated/<book_name>/`.
+Source inputs remain untouched; their collected combined copies are removed from
+the handoff folder after individual PDFs and reports have been written.
+
+To run isolation separately for the ICNSS book currently in `input/`:
+
+```bash
+python -m scripts.isolate_pdf "input/Abstract Book_Final ICNSS 2026.pdf" \
+  --start-page 54 --end-page 337 --expected-count 156 \
+  --output-folder output/handoff_bundle/pdfs \
+  --metadata-folder output/intermediate_outputs/abstracts_isolated/ICNSS_manual
+```
+
+Page arguments are inclusive, 1-based PDF page numbers. Select the body range to
+exclude front matter and back covers. `--expected-count` validates against the
+expected count before writing files. Leading submission IDs are used for naming
+only; boundaries still come from delimiters. Numeric IDs, IDs with a numeric
+suffix, and `ICNSS#` IDs retain their printed values in metadata and filenames,
+including the hashtag (for example, `ICNSS#02`). Other filename components replace
+spaces and punctuation with underscores, preserving letters, numbers and hyphens.
+The first listed author is read from the formatted heading, excluding affiliation
+markers, and formatted as initials and surname (`Govind Agrawala` → `G.Agrawala`,
+`K. S. Shameem` → `K.S.Shameem`). Full names remain in the summary. Author titles
+are removed, surname particles are retained, and single names are preserved; missing authors use `Unknown_Author` and are reported as warnings. If an ID is absent,
+`paper_NNN` is used as the ID and reported in the summary.
+Duplicate IDs fail before any PDFs are written. Outputs are
+`<combined_PDF_stem>_<submission_ID>_<first_author>.pdf` (for example,
+`Abstract_Book_Final_ICNSS_2026_7147445_G.Agrawala.pdf`), plus `isolation_summary.json`
+with counts, warnings, titles, first authors, original page ranges and clipping
+coordinates. Existing filenames are never overwritten;
+choose a fresh destination for another run. Source PDFs are preserved.
+
+Repeated text near page edges is removed when identifiable; use `--keep-margins`
+to retain it. Uppercase theme-only and oral/poster section divider pages, and blank pages,
+are excluded. A caption-only fragment separated by an extra delimiter is attached
+to its preceding proposal and reported in the summary.
+A final proposal without a closing delimiter is retained with a warning. Count
+mismatches and content crossing a clipping boundary raise errors. An extraction
+failure is logged and can leave partial output. Missing delimiters cannot always
+be detected without an expected count; inspect the summary and resulting PDFs.
+
+The ICNSS book has 156 ID-bearing abstracts. Its contents includes a stray
+numbered `75.` before an author line; the 157 delimiters also include an extra
+separator before a dry-toilet figure. That figure is retained with abstract
+`7149572`, rather than becoming a separate PDF.
+
+After standalone isolation, run `python -m scripts.extract_abstract_data` to
+regenerate metadata from the handoff PDFs. The normal pipeline runs extraction
+automatically. Standalone isolation refuses existing filenames; the normal
+pipeline clears previous generated outputs at the start of each run.

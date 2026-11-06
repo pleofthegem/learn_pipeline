@@ -2,7 +2,7 @@
 import argparse
 from pathlib import Path
 
-from . import anonymise_abstracts, clear_outputs, convert_to_pdf, extract_abstract_data, split_pdf
+from . import anonymise_abstracts, clear_outputs, convert_to_pdf, extract_abstract_data, prepare_pdfs
 from .config import INPUT_FOLDER, OUTPUT_ROOT
 
 
@@ -45,8 +45,8 @@ def run_pipeline(
         )
     else:
         copied = convert_to_pdf.aggregate_files(source, pdfs, suffixes={".pdf"})
-    print("Splitting combined PDFs...")
-    splits = split_pdf.prepare_individual_pdfs(pdfs, pdfs, intermediate / "abstracts_split")
+    print("Preparing individual PDFs (split or isolate)...")
+    splits, isolated = prepare_pdfs.prepare_individual_pdfs(pdfs, intermediate)
     print("Extracting data from abstracts...")
     metadata = extract_abstract_data.extract_abstract_data(
         pdfs, bundle / "abstract_metadata.csv",
@@ -63,6 +63,7 @@ def run_pipeline(
     return {
         "converted_pdfs": len(copied),
         "split_abstracts": len(splits),
+        "isolated_abstracts": len(isolated),
         "metadata_rows": len(metadata),
         "anonymised_pdfs": len(anonymised),
     }

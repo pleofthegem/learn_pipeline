@@ -15,8 +15,13 @@ TITLE_HINT_MIN_SCORE = 0.75
 TITLE_FONT_TOLERANCE = 0.1
 KEYWORD_FONT_TOLERANCE = 0.5
 EVENT_ACRONYMS = ("IWA", "AI", "UN", "UK", "USA")
-UNLABELLED_BODY_MIN_WORDS = 12
-UNLABELLED_SENTENCE_MIN_WORDS = 6
+# Explicit submission-ID prefixes only; do not strip arbitrary leading numbers
+# such as years, chemical names, or numbered research titles.
+TITLE_ID_PREFIX_PATTERNS = [
+    re.compile(r"^\s*\d{6,7}(?:-\d+)?(?=\s|$|[:–—])(?:\s*[:–—]\s*|\s*)"),
+    re.compile(r"^\s*ICNSS\s*#\s*\d+(?=\s|$|[:–—])(?:\s*[:–—]\s*|\s*)", re.I),
+    re.compile(r"^\s*T\d+_[OP]\d+(?=\s|$|[:–—])(?:\s*[:–—]\s*|\s*)", re.I),
+]
 
 # Outer fields of the boxed abstract submission form. Headings within the
 # abstract (e.g. Methodology or Conclusion) belong to its description.
@@ -85,7 +90,7 @@ KEYWORDS_RE = re.compile(
     re.IGNORECASE,
 )
 ABSTRACT_RE = re.compile(
-    r"^\s*abstract(?:\s+of\s+the\s+project)?\s*[:.\-–—]?\s*(.*)$",
+    r"^\s*abstract(?:\s+of\s+the\s+project)?(?:\s*[:.\-–—]\s*(.*)|\s*)$",
     re.IGNORECASE,
 )
 BRACKETED_TITLE_NOISE_RE = re.compile(r"^\s*[\(\[\{][^\)\]\}]+[\)\]\}]\s*$")

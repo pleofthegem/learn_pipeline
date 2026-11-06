@@ -169,9 +169,26 @@ def pre_section_lines(lines: list[TextLine]) -> list[tuple[int, TextLine]]:
 
 
 def title_candidates(lines: list[TextLine]) -> list[tuple[int, TextLine]]:
-    """Keep pre-section text that can belong to a title."""
-    return [(index, line) for index, line in pre_section_lines(lines)
-            if not is_contact_line(line.text) and not is_title_noise_line(line.text)]
+    """Clean ID prefixes before title selection, retaining original line indices."""
+    candidates = []
+    for index, line in pre_section_lines(lines):
+        text = clean_title_prefix(line.text)
+        if text and not is_contact_line(text) and not is_title_noise_line(text):
+            candidates.append((index, TextLine(text, line.size)))
+    return candidates
+
+
+def clean_title_prefix(title: str) -> str:
+    """Strip only recognised leading submission codes; retain IDs elsewhere."""
+    title = title.strip()
+    while title:
+        cleaned = title
+        for pattern in rules.TITLE_ID_PREFIX_PATTERNS:
+            cleaned = pattern.sub('', cleaned, count=1).strip()
+        if cleaned == title:
+            break
+        title = cleaned
+    return title
 
 
 def find_title_from_filename(
@@ -231,8 +248,6 @@ def find_title_from_layout(lines: list[TextLine]) -> tuple[str, int]:
 
         title_lines.append(line.text)
         last_index = index
-        if len(title_lines) == rules.TITLE_MAX_LINES:
-            break
 
     return " ".join(title_lines), last_index
 
@@ -429,9 +444,10 @@ def is_author_marker_start_candidate(
 
 def extract_title(lines: list[TextLine], path: Path) -> tuple[str, int]:
     """Return the title and its last line index (-1 if missing)."""
-    return (find_title_from_filename(lines, path)
-            or find_title_from_water_board_layout(lines)
-            or find_title_from_layout(lines))
+    title, index = (find_title_from_filename(lines, path)
+                    or find_title_from_water_board_layout(lines)
+                    or find_title_from_layout(lines))
+    return clean_title_prefix(title), index
 
 
 def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
@@ -699,12 +715,8 @@ def abstract_start(lines: list[str]) -> tuple[int, str]:
             continue
         match = rules.ABSTRACT_RE.match(line)
         if match:
-            return index + 1, match.group(1).strip()
-
-    section_index = first_section_index(lines)
-    if section_index is None:
-        return len(lines), ""
-    return section_index + 1, ""
+            return index + 1, (match.group(1) or '').strip()
+    return len(lines), ""
 
 
 def extract_description(lines: list[str]) -> str:
@@ -722,44 +734,6 @@ def extract_description(lines: list[str]) -> str:
         description_lines.append(line)
 
     return " ".join(description_lines).strip()
-
-
-def extract_unlabelled_description(lines: list[TextLine], title_end_index: int) -> str:
-    """Find prose after the title/author metadata when no Abstract heading exists.
-
-    Keep subsequent paragraphs and internal sections across pages. Exclude form
-    headers, page counters, and trailing keywords/references. Layout-specific
-    labelled extraction still takes precedence over this fallback.
-    """
-    description = []
-    in_keywords = False
-    for line in lines[title_end_index + 1:]:
-        text = line.text.strip()
-        if rules.KEYWORDS_RE.match(text):
-            if description:
-                break
-            in_keywords = True
-            continue
-        if in_keywords and is_keyword_continuation_text(text) and not is_section_heading(text):
-            continue
-        in_keywords = False
-        if normalise_heading(text) == "references":
-            break
-        if (is_page_number_line(text) or rules.SUBMISSION_FORM_PAGE_RE.fullmatch(text)
-                or rules.SUBMISSION_FORM_HEADER_RE.fullmatch(text)
-                or rules.SUBMISSION_FORM_EVENT_RE.fullmatch(text)):
-            continue
-        if not description:
-            if is_contact_line(text) or is_affiliation_text(text) or is_placeholder_line(text):
-                continue
-            words = text.split()
-            is_prose = len(words) >= rules.UNLABELLED_BODY_MIN_WORDS or (
-                len(words) >= rules.UNLABELLED_SENTENCE_MIN_WORDS and text.endswith((".", "!", "?"))
-            )
-            if not is_prose and not is_section_heading(text):
-                continue
-        description.append(text)
-    return " ".join(description).strip()
 
 
 def submission_form_authors(path: Path) -> str:
@@ -837,7 +811,7 @@ def extract_submission_form(
     defaults = default_additional_info or {}
     return {
         "filename": path.name,
-        "abstract_title": compact_info_text(" ".join(sections["title"])),
+        "abstract_title": clean_title_prefix(compact_info_text(" ".join(sections["title"]))),
         "abstract_authors": submission_form_authors(path),
         "abstract_description": compact_info_text(" ".join(sections["abstract"])),
         "abstract_keywords": standardise_keywords(" ".join(sections.get("keywords", []))),
@@ -862,15 +836,7 @@ def process_pdf(
     if submission is not None:
         return submission
     title, title_end_index = extract_title(text_lines, path)
-    has_abstract_heading = any(
-        rules.ABSTRACT_RE.match(line)
-        and not rules.KEYWORDS_RE.match(line)
-        and not rules.SUBMISSION_FORM_HEADER_RE.fullmatch(line)
-        for line in lines
-    )
-    description = extract_description(lines) if has_abstract_heading else (
-        extract_unlabelled_description(text_lines, title_end_index) or extract_description(lines)
-    )
+    description = extract_description(lines)
     return {
         "filename": path.name,
         "abstract_title": title,
