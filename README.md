@@ -62,6 +62,9 @@ extracted only from explicitly labelled abstract sections; unlabelled body text,
 introductions and summaries leave that field blank. Recognised leading submission
 IDs are removed from titles using `TITLE_ID_PREFIX_PATTERNS` in
 `scripts/extraction_rules.py`; add a pattern there for a new ID format.
+Paired quotation marks around titles are removed; internal quotes and apostrophes
+are preserved. Mixed affiliation suffixes such as `Name1a` or `Name1,a*` are cleaned
+before author names are split, including when no superscript formatting survives.
 
 Webinar Excel reports are saved in `webinar/output/`.
 
@@ -188,6 +191,11 @@ markers, and formatted as initials and surname (`Govind Agrawala` → `G.Agrawal
 `K. S. Shameem` → `K.S.Shameem`). Full names remain in the summary. Author titles
 are removed, surname particles are retained, and single names are preserved; missing authors use `Unknown_Author` and are reported as warnings. If an ID is absent,
 `paper_NNN` is used as the ID and reported in the summary.
+Filename naming and metadata extraction share the same author reader. It reads
+only the author block immediately after the title, stopping at affiliation
+markers, style changes or non-name text. It never searches later body paragraphs
+for replacement authors. Names retain Unicode letters and normal name punctuation;
+affiliation markers are removed and remaining alphanumeric strings are rejected.
 Duplicate IDs fail before any PDFs are written. Outputs are
 `<combined_PDF_stem>_<submission_ID>_<first_author>.pdf` (for example,
 `Abstract_Book_Final_ICNSS_2026_7147445_G.Agrawala.pdf`), plus `isolation_summary.json`

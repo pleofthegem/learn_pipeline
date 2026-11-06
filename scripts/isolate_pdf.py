@@ -15,6 +15,7 @@ import unicodedata
 import fitz
 
 from .config import INTERMEDIATE_FOLDER, PDF_FOLDER
+from .pdf_headings import author_names_from_lines, strip_title_quotes
 
 LOG = logging.getLogger(__name__)
 SUBMISSION_ID = re.compile(r"(?:\d{6,8}(?:-\d+)?|ICNSS\s*#\s*\d+)", re.I)
@@ -254,21 +255,9 @@ def extract_proposal_heading(pdf: fitz.Document, regions: list[Region]) -> tuple
                             for span in line["spans"])]
     title = " ".join("".join(span["text"] for span in heading[i]["spans"]).strip()
                      for i in title_indices)
-    author_lines = []
-    for line in lines[max(title_indices) + 1:]:
-        spans = [span for span in line["spans"] if span["text"].strip()
-                 and not span["flags"] & 1]
-        if not spans or not any(span["flags"] & 16 and any(c.isalpha() for c in span["text"])
-                                for span in spans):
-            break
-        author_lines.append("".join(span["text"] for span in line["spans"]
-                                    if not span["flags"] & 1).strip())
-    authors = " ".join(author_lines)
-    # Some source files use a comma between a leading initial and its surname.
-    authors = re.sub(r"^([A-Z](?:[. ]+[A-Z])*)[,]\s*(?=[A-Z][a-z])", r"\1 ", authors)
-    first = re.split(r",|\s+and\s+|\s*&\s*", authors, maxsplit=1)[0]
-    first = "".join(c for c in first if not c.isdigit() and c not in "*#†‡")
-    return title, re.sub(r"\s+", " ", first).strip()
+    authors = author_names_from_lines(lines, max(title_indices))
+    first = authors[0] if authors else ""
+    return strip_title_quotes(title), re.sub(r"\s+", " ", first).strip()
 
 
 def extract_proposal(pdf: fitz.Document, regions: list[Region], destination: Path) -> None:

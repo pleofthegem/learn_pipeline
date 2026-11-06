@@ -827,3 +827,168 @@ def test_conflicting_explicit_event_labels_are_left_blank(field, headers):
     from scripts.extract_abstract_data import TextLine, extract_additional_info
     lines = [TextLine(text, 10) for text in headers] + [TextLine('Water quality research', 16)]
     assert extract_additional_info(lines, len(lines) - 1, title='Water quality research')[field] == ''
+
+
+@pytest.mark.parametrize('designation', [
+    '1Director - Operations, Energy Tech Solutions Pvt. Ltd., Pune;',
+    'Director - Operations, Energy Tech Solutions Pvt. Ltd., Pune;',
+    '1Senior Consultant, Water Solutions Private Limited, Pune;',
+])
+def test_single_numbered_author_is_not_replaced_by_designation(tmp_path, designation):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 80), 'Effective Decentralised Treatment', fontsize=16)
+        page.insert_text((72, 110), 'R. S. Babar1', fontsize=12)
+        page.insert_text((72, 140), designation, fontsize=10)
+        page.insert_text((72, 160), 'rahulbabar1204@gmail.com', fontsize=10)
+        page.insert_text((72, 190), 'India faces water stress, pollution, and population growth.', fontsize=12)
+        pdf.save(path)
+    row = process_pdf(path)
+    assert row['abstract_authors'] == 'R. S. Babar'
+    assert row['abstract_description'] == ''
+
+
+def test_designation_is_not_appended_to_wrapped_author_list(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 80), 'Water quality research', fontsize=16)
+        for y, text in [(110, 'Jane Smith1, John Doe2,'), (130, 'R. S. Babar3'),
+                        (150, '3Director - Operations, Energy Tech Solutions Pvt. Ltd., Pune;')]:
+            page.insert_text((72, y), text, fontsize=11, fontname='heit' if y == 150 else 'hebo')
+        pdf.save(path)
+    assert process_pdf(path)['abstract_authors'] == 'Jane Smith, John Doe, R. S. Babar'
+
+
+def test_filename_and_metadata_share_formatted_author_block(tmp_path):
+    from scripts.isolate_pdf import Region, extract_proposal_heading
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 60), '7149387')
+        page.insert_text((72, 90), 'Water quality research', fontsize=16, fontname='hebo')
+        page.insert_text((72, 120), 'R. S. Babar, Jane Smith', fontsize=12, fontname='hebo')
+        # Deliberately no known job titles or institution keywords, and the same
+        # font size as the names: typography, rather than a blacklist, separates it.
+        page.insert_text((72, 150), 'Unfamiliar Appointment, Curious Services, Pune', fontsize=12, fontname='heit')
+        page.insert_text((72, 180), 'Jane Doe, John Smith', fontsize=12)
+        pdf.save(path)
+    row = process_pdf(path)
+    assert row['abstract_authors'] == 'R. S. Babar, Jane Smith'
+    with fitz.open(path) as pdf:
+        title, first = extract_proposal_heading(pdf, [Region(1, pdf[0].rect)])
+    assert first == 'R. S. Babar'
+    assert title == row['abstract_title']
+
+
+def test_author_reader_stops_before_affiliation_and_does_not_search_body(tmp_path):
+    path = tmp_path / 'rice_straw.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Rice Straw as a Natural Plant-Based Coagulant', fontsize=16)
+        page.insert_text((72, 95), 'for Water Treatment', fontsize=16)
+        page.insert_text((72, 130), 'Bhavana1, Mahesh1, A.K. Patel2', fontsize=12)
+        page.insert_text((72, 160), '1Unfamiliar Association, Warangal, India', fontsize=12)
+        page.insert_text((72, 200), 'and chemical polymer flocculants like PAM, Alum pose environmental', fontsize=12)
+        page.insert_text((72, 230), 'Jane Smith, John Doe', fontsize=12)
+        pdf.save(path)
+    assert process_pdf(path)['abstract_authors'] == 'Bhavana, Mahesh, A.K. Patel'
+
+
+def test_missing_author_block_does_not_fall_through_to_body(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Water quality research', fontsize=16)
+        page.insert_text((72, 110), '1Unfamiliar Association, London, UK', fontsize=12)
+        page.insert_text((72, 150), 'A short body sentence.', fontsize=12)
+        page.insert_text((72, 180), 'Jane Smith, John Doe', fontsize=12, fontname='hebo')
+        pdf.save(path)
+    assert process_pdf(path)['abstract_authors'] == ''
+
+
+def test_same_style_association_is_not_an_author_continuation(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Water quality research', fontsize=16)
+        page.insert_text((72, 110), 'Jane Smith1, John Doe2', fontsize=12, fontname='hebo')
+        page.insert_text((72, 140), 'Unfamiliar Association, Pune, India', fontsize=12, fontname='hebo')
+        pdf.save(path)
+    assert process_pdf(path)['abstract_authors'] == 'Jane Smith, John Doe'
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('Jane Smith1', 'Jane Smith'),
+    ('Jane Smith¹²', 'Jane Smith'),
+    ('José O’Neill2', 'José O’Neill'),
+    ('李明3', '李明'),
+    ('Jane2Smith', ''),
+    ('Jane_2_Smith', ''),
+    ('Jane Smith@example.com', ''),
+])
+def test_author_names_allow_letters_and_name_punctuation_only(raw, expected):
+    from scripts.extract_abstract_data import clean_author_name
+    assert clean_author_name(raw) == expected
+
+
+def test_wrapped_author_line_can_begin_with_and(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Water quality research', fontsize=16)
+        page.insert_text((72, 110), 'Saumya1, Arvind Singh Senger3', fontsize=12, fontname='hebo')
+        page.insert_text((72, 130), 'and Rajarshi Banerjee4', fontsize=12, fontname='hebo')
+        page.insert_text((72, 160), 'Unfamiliar Association, Pune, India', fontsize=11, fontname='heit')
+        pdf.save(path)
+    assert process_pdf(path)['abstract_authors'] == 'Saumya, Arvind Singh Senger, Rajarshi Banerjee'
+
+
+@pytest.mark.parametrize('title,expected', [
+    ('"Water quality research"', 'Water quality research'),
+    ('“Water quality research”', 'Water quality research'),
+    ("'Water quality research'", 'Water quality research'),
+    ('‘Water quality research’', 'Water quality research'),
+    ('7147445 “Water quality research”', 'Water quality research'),
+    ('“7147445 Water quality research”', 'Water quality research'),
+    ('"\'Water quality research\'"', 'Water quality research'),
+    ("China's toilet revolution", "China's toilet revolution"),
+    ('Use of "green" technologies', 'Use of "green" technologies'),
+])
+def test_title_cleaning_strips_only_enclosing_quotes(title, expected):
+    from scripts.extract_abstract_data import clean_title_prefix
+    assert clean_title_prefix(title) == expected
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('Jane Smith1a', 'Jane Smith'),
+    ('Jane Smith1,a', 'Jane Smith'),
+    ('Jane Smith1, a *', 'Jane Smith'),
+    ('Jane Smith1a,2b*', 'Jane Smith'),
+    ('Laure Sionéb2a', 'Laure Sionéb'),
+    ('Jane2Smith', ''),
+])
+def test_mixed_affiliation_suffixes_are_removed_as_a_group(raw, expected):
+    from scripts.extract_abstract_data import clean_author_name
+    assert clean_author_name(raw) == expected
+
+
+def test_flat_text_markers_match_silver_membrane_author_list(tmp_path):
+    from scripts.isolate_pdf import Region, extract_proposal_heading
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 60), '7114124')
+        page.insert_text((72, 90), 'Silver-Infused Polymer Nanocomposite Membrane', fontsize=16)
+        # All markers use the same font/baseline as the names: no superscript
+        # formatting is available to help either author reader.
+        page.insert_text((72, 120), 'Vaidhegi Kugarajah1,a*, Chris Felshia1,a,', fontsize=11)
+        page.insert_text((72, 140), 'Jenifer J1,s and Hardika S1,a', fontsize=11)
+        page.insert_text((72, 170), '1Unfamiliar Association, London, UK', fontsize=11)
+        pdf.save(path)
+    row = process_pdf(path)
+    assert row['abstract_authors'] == 'Vaidhegi Kugarajah, Chris Felshia, Jenifer J, Hardika S'
+    with fitz.open(path) as pdf:
+        _, first = extract_proposal_heading(pdf, [Region(1, pdf[0].rect)])
+    assert first == 'Vaidhegi Kugarajah'

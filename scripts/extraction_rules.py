@@ -96,7 +96,17 @@ ABSTRACT_RE = re.compile(
 BRACKETED_TITLE_NOISE_RE = re.compile(r"^\s*[\(\[\{][^\)\]\}]+[\)\]\}]\s*$")
 AUTHOR_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'.-]*")
 AUTHOR_INITIALS_ONLY_RE = re.compile(r"(?:[A-Z]\.?){1,10}")
-AUTHOR_MARKER_CHARS = "*†‡§"
+AUTHOR_MARKER_CHARS = "*†‡§#"
+# Strip whole numeric/mixed affiliation suffixes before splitting authors at
+# commas, so `Name1,a` cannot turn into a spurious author named `a`.
+AUTHOR_AFFILIATION_SUFFIX_RE = re.compile(
+    r"(?<=[^\W\d_])\s*[0-9¹²³⁴⁵⁶⁷⁸⁹⁰]+[a-z]?"
+    r"(?:\s*,\s*(?:[0-9¹²³⁴⁵⁶⁷⁸⁹⁰]+[a-z]?|[a-z](?=\s*(?:[,;.*#†‡§]|$|\band\b|&))))*"
+    r"(?:\s*[*#†‡§]+)?(?=\s*(?:[,;.]|$|\band\b|&))"
+)
+NUMERIC_AUTHOR_MARKER_RE = re.compile(
+    r"(?<=[A-Za-z])(?:\d+(?:\s*,\s*\d+)*|[¹²³⁴⁵⁶⁷⁸⁹⁰]+)(?=\s*(?:,|$))"
+)
 AUTHOR_MARKER_SUFFIX_RE = re.compile(
     rf"(?<=[A-Za-z])\s*"
     rf"(?:\d+(?:\s*,\s*\d+)*(?:\s*,\s*)?)?"

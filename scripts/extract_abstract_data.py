@@ -12,6 +12,11 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from . import extraction_rules as rules
+from .pdf_headings import (
+    author_names_from_lines, clean_author_name, is_initials_only,
+    normalise_author_separators, parse_author_names,
+    strip_title_quotes,
+)
 
 
 AdditionalInfo = dict[str, str]
@@ -25,6 +30,7 @@ class TextLine:
 
     text: str
     size: float
+    spans: tuple[dict, ...] = ()
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,7 +78,7 @@ def extract_text_lines_from_pdf(path: Path) -> list[TextLine]:
                     if not text:
                         continue
                     size = max(span["size"] for span in line.get("spans", []))
-                    lines.append(TextLine(text=text, size=size))
+                    lines.append(TextLine(text=text, size=size, spans=tuple(line["spans"])))
     return lines
 
 
@@ -185,6 +191,7 @@ def clean_title_prefix(title: str) -> str:
         cleaned = title
         for pattern in rules.TITLE_ID_PREFIX_PATTERNS:
             cleaned = pattern.sub('', cleaned, count=1).strip()
+        cleaned = strip_title_quotes(cleaned)
         if cleaned == title:
             break
         title = cleaned
@@ -286,49 +293,6 @@ def clean_author_line(line: str) -> str:
     return ", ".join(parse_author_names(line))
 
 
-def clean_author_name(name: str) -> str:
-    """Remove footnote markers from one author name."""
-    name = rules.AUTHOR_MARKER_SUFFIX_RE.sub("", name)
-    name = rules.AUTHOR_MARKER_SYMBOL_RE.sub("", name)
-    name = re.sub(r"\d+(?=\s|,|\.|$)", "", name)
-    name = re.sub(r"\s+", " ", name)
-    return name.strip(" .,;")
-
-
-def normalise_author_separators(text: str) -> str:
-    """Normalise common author separators before comma splitting."""
-    return re.sub(r"\s+\band\s+(?=[A-Z])", ", ", text)
-
-
-def is_initials_only(text: str) -> bool:
-    """Check whether text is only author initials."""
-    text = clean_author_name(text).replace(" ", "")
-    return bool(rules.AUTHOR_INITIALS_ONLY_RE.fullmatch(text))
-
-
-def parse_author_names(text: str) -> list[str]:
-    """Split a comma-separated author list into cleaned author names."""
-    text = normalise_author_separators(text)
-    names: list[str] = []
-    pending_initials = ""
-    for part in text.split(","):
-        name = clean_author_name(part)
-        if name:
-            if is_initials_only(name):
-                pending_initials = (
-                    f"{pending_initials} {name}".strip()
-                    if pending_initials else name
-                )
-                continue
-            if pending_initials:
-                name = f"{pending_initials} {name}"
-                pending_initials = ""
-            names.append(name)
-    if pending_initials:
-        names.append(pending_initials)
-    return names
-
-
 def is_affiliation_text(text: str) -> bool:
     """Check whether text looks like institutional affiliation metadata."""
     lower_text = text.lower()
@@ -385,7 +349,8 @@ def is_author_fragment_line(line: str) -> bool:
 
 def has_author_marker_shape(line: str) -> bool:
     """Check whether text contains a name-style author marker suffix."""
-    return bool(rules.AUTHOR_MARKER_SUFFIX_RE.search(line))
+    return bool(rules.AUTHOR_MARKER_SUFFIX_RE.search(line)
+                or rules.NUMERIC_AUTHOR_MARKER_RE.search(line))
 
 
 def is_author_noise(line: str) -> bool:
@@ -451,49 +416,9 @@ def extract_title(lines: list[TextLine], path: Path) -> tuple[str, int]:
 
 
 def extract_authors(lines: list[TextLine], title_end_index: int) -> str:
-    """Extract authors from comma-separated pre-section author lists."""
-    texts = [line.text for line in lines]
-    section_index = first_section_index(texts)
-    limit = section_index if section_index is not None else len(lines)
-    author_lines: list[str] = []
-    start = find_author_start_index(
-        lines,
-        limit,
-        min_index=max(title_end_index + 1, 0),
-    )
-    if start is None:
-        start = max(title_end_index + 1, 0)
-
-    for line in lines[start:limit]:
-        text = line.text
-        if is_section_heading(text):
-            break
-
-        if is_author_fragment_line(text) or (
-            author_lines
-            and author_lines[-1].strip().lower().endswith(" and")
-            and is_probable_author_name(clean_author_line(text))
-        ):
-            author_lines.append(text)
-            continue
-        if author_lines:
-            break
-
-    if author_lines:
-        return ", ".join(parse_author_names(" ".join(author_lines)))
-
-    for line in lines[start:limit]:
-        text = line.text
-        if is_contact_line(text) or is_placeholder_line(text):
-            continue
-        if is_section_heading(text):
-            break
-
-        author = clean_author_line(text)
-        if author and is_probable_author_name(author):
-            return author
-
-    return ""
+    """Read the same bounded author block used for PDF filenames."""
+    raw_lines = [{"text": line.text, "size": line.size, "spans": line.spans} for line in lines]
+    return ", ".join(author_names_from_lines(raw_lines, title_end_index))
 
 
 def compact_info_text(text: str) -> str:
