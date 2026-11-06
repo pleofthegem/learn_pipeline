@@ -12,8 +12,16 @@ Windows or **Start IWA Learn.command** on macOS. On Linux, run the `.command`
 launcher. Launchers locate the project automatically, so shortcuts can start
 from another directory.
 
+Both launchers run `git pull --ff-only` before starting the app.
+Updating requires Git on PATH and a Git checkout with a configured
+upstream branch. If Git is missing or updating fails, it displays a warning and
+starts the installed version. Existing
+checkouts need one manual `git pull` to receive this launcher change; subsequent
+launches attempt to update automatically on Windows, macOS, and Linux.
+
 The first launch creates `.venv` and installs missing dependencies from
-`requirements.txt`, requiring internet access. Later launches work offline.
+`requirements.txt`, requiring internet access. Later launches reuse the environment;
+both launchers attempt an online update but can start offline.
 On Ubuntu/Debian, Tkinter is supplied by `python3-tk`; on Windows use Python with
 Tcl/Tk support installed. This launcher requires Python; it is not a standalone
 executable.
