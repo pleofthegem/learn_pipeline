@@ -16,6 +16,7 @@ import fitz
 
 from .config import INTERMEDIATE_FOLDER, PDF_FOLDER
 from .pdf_headings import author_names_from_lines, strip_title_quotes
+from .pdf_text import join_pdf_lines
 
 LOG = logging.getLogger(__name__)
 SUBMISSION_ID = re.compile(r"(?:\d{6,8}(?:-\d+)?|ICNSS\s*#\s*\d+)", re.I)
@@ -253,7 +254,7 @@ def extract_proposal_heading(pdf: fitz.Document, regions: list[Region]) -> tuple
                      if any(any(c.isalpha() for c in span["text"])
                             and abs(span["size"] - title_size) < .5
                             for span in line["spans"])]
-    title = " ".join("".join(span["text"] for span in heading[i]["spans"]).strip()
+    title = join_pdf_lines("".join(span["text"] for span in heading[i]["spans"]).strip()
                      for i in title_indices)
     authors = author_names_from_lines(lines, max(title_indices))
     first = authors[0] if authors else ""

@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 from . import extraction_rules as rules
+from .pdf_text import join_pdf_lines
 
 NAME_PARTICLES = {'de', 'da', 'dos', 'das', 'van', 'von', 'der', 'den', 'del', 'la', 'le', 'du', 'di', 'd', 'l', 'al', 'el'}
 NAME_PUNCTUATION = " .-'’–"
@@ -114,7 +115,8 @@ def _name_shaped(text: str) -> bool:
 def _continues(previous: str, line: dict) -> bool:
     text = _raw_text(line)
     last = previous.rsplit(',', 1)[-1].strip()
-    return bool(previous.rstrip().endswith(',') or re.search(r'\band\s*$', previous)
+    return bool((re.search(r'[^\W\d_][-‐‑]$', previous) and re.match(r'[^\W\d_]', _visible_text(line)))
+                or previous.rstrip().endswith(',') or re.search(r'\band\s*$', previous)
                 or is_initials_only(last)
                 or rules.AUTHOR_MARKER_SUFFIX_RE.search(text)
                 or rules.AUTHOR_AFFILIATION_SUFFIX_RE.search(text)
@@ -142,7 +144,7 @@ def formatted_author_block(lines: list[dict], title_end_index: int) -> str | Non
             break
         style = current_style
         names.append(text)
-    return ' '.join(names) if names else None
+    return join_pdf_lines(names) if names else None
 
 
 def author_names_from_lines(lines: list[dict], title_end_index: int) -> list[str]:
@@ -175,4 +177,4 @@ def author_names_from_lines(lines: list[dict], title_end_index: int) -> list[str
             break
         names.append(text)
         style = current_style
-    return parse_author_names(' '.join(names))
+    return parse_author_names(join_pdf_lines(names))

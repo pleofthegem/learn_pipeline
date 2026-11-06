@@ -12,6 +12,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 from . import extraction_rules as rules
+from .pdf_text import join_pdf_lines
 from .pdf_headings import (
     author_names_from_lines, clean_author_name, is_initials_only,
     normalise_author_separators, parse_author_names,
@@ -31,6 +32,8 @@ class TextLine:
     text: str
     size: float
     spans: tuple[dict, ...] = ()
+    page: int | None = None
+    bbox: tuple[float, ...] | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,7 +71,7 @@ def extract_text_lines_from_pdf(path: Path) -> list[TextLine]:
     """Extract text lines and font sizes from every page of a PDF file."""
     lines: list[TextLine] = []
     with fitz.open(path) as pdf:
-        for page in pdf:
+        for page_number, page in enumerate(pdf, 1):
             data = page.get_text("dict")
             for block in data["blocks"]:
                 for line in block.get("lines", []):
@@ -78,7 +81,8 @@ def extract_text_lines_from_pdf(path: Path) -> list[TextLine]:
                     if not text:
                         continue
                     size = max(span["size"] for span in line.get("spans", []))
-                    lines.append(TextLine(text=text, size=size, spans=tuple(line["spans"])))
+                    lines.append(TextLine(text=text, size=size, spans=tuple(line["spans"]),
+                                          page=page_number, bbox=tuple(line['bbox'])))
     return lines
 
 
@@ -216,7 +220,7 @@ def find_title_from_filename(
     for start in range(len(candidates)):
         for end in range(start, min(start + rules.TITLE_MAX_LINES, len(candidates))):
             window = candidates[start:end + 1]
-            title = " ".join(line.text for _, line in window)
+            title = join_pdf_lines(line.text for _, line in window)
             score = SequenceMatcher(
                 None,
                 expected,
@@ -256,7 +260,7 @@ def find_title_from_layout(lines: list[TextLine]) -> tuple[str, int]:
         title_lines.append(line.text)
         last_index = index
 
-    return " ".join(title_lines), last_index
+    return join_pdf_lines(title_lines), last_index
 
 
 def find_title_from_water_board_layout(
@@ -285,7 +289,7 @@ def find_title_from_water_board_layout(
 
     if not title_lines:
         return None
-    return " ".join(title_lines), last_index
+    return join_pdf_lines(title_lines), last_index
 
 
 def clean_author_line(line: str) -> str:
@@ -494,7 +498,7 @@ def extract_conference_name(header_lines: list[str]) -> str:
                     or rules.EVENT_NAME_LABEL_RE.match(extra)):
                 break
             parts.append(extra)
-        names.append(title_case_if_all_caps(" ".join(parts)))
+        names.append(title_case_if_all_caps(join_pdf_lines(parts)))
     return names[0] if len(set(names)) == 1 else ""
 
 
@@ -580,9 +584,11 @@ def clean_keyword_part(keyword: str) -> str:
 
 def text_before_inline_section(text: str) -> str:
     """Return text before an inline section heading, if one is present."""
-    match = rules.INLINE_SECTION_RE.search(text)
-    if not match:
+    matches = [match for pattern in (rules.INLINE_SECTION_RE, rules.KEYWORD_CAPTION_RE)
+               if (match := pattern.search(text))]
+    if not matches:
         return text.strip()
+    match = min(matches, key=lambda match: match.start())
     return text[:match.start()].strip()
 
 
@@ -592,12 +598,25 @@ def is_keyword_continuation_text(text: str) -> bool:
     if not text:
         return False
 
-    words = re.findall(r"[A-Za-z0-9]+", text)
-    if len(words) <= 8:
-        return True
-    if ";" in text and len(words) <= 14:
-        return True
-    return False
+    # A wrapped list may contain many short keywords on one line. Limit each
+    # item, rather than truncating the whole line after eight words.
+    items = [item for item in re.split(r'[,;]', text) if item.strip()]
+    return bool(items) and all(len(re.findall(r'[A-Za-z0-9]+', item)) <= 8 for item in items)
+
+
+def keyword_text_styles(line: TextLine, start: int = 0) -> set[tuple]:
+    """Read payload styles separately from the bold Keywords label."""
+    raw = ''.join(span['text'] for span in line.spans)
+    offset = 0
+    start += len(raw) - len(raw.lstrip())
+    styles = set()
+    for span in line.spans:
+        end = offset + len(span['text'])
+        payload = span['text'][max(0, start - offset):]
+        if end > start and any(c.isalpha() for c in payload) and not span['flags'] & 1:
+            styles.add((span['font'], round(span['size'], 1)))
+        offset = end
+    return styles
 
 
 def extract_keywords_from_text_lines(lines: list[TextLine]) -> str:
@@ -612,21 +631,51 @@ def extract_keywords_from_text_lines(lines: list[TextLine]) -> str:
         if first_line:
             keyword_lines.append(first_line)
 
+        # An inline caption/section ends the block immediately.
+        if first_line != match.group(1).strip():
+            return standardise_keywords(first_line)
+        styles = keyword_text_styles(line, match.start(1))
+        previous = line
+
         for continuation in lines[index + 1:]:
             text = continuation.text.strip()
-            if is_section_heading(text):
+            if (is_section_heading(text) or rules.KEYWORD_CAPTION_RE.match(text)
+                    or is_contact_line(text) or is_page_number_line(text)):
                 break
-            if continuation.size > line.size + rules.KEYWORD_FONT_TOLERANCE:
+            next_styles = keyword_text_styles(continuation)
+            payload_size = max((size for _, size in styles), default=line.size)
+            next_size = max((size for _, size in next_styles), default=continuation.size)
+            if not styles and not keyword_lines and next_size <= line.size:
+                payload_size = next_size  # Standalone label may use a larger font.
+            if abs(next_size - payload_size) > rules.KEYWORD_FONT_TOLERANCE:
+                break
+            if previous.page is not None and continuation.page != previous.page:
+                break
+            if previous.bbox and continuation.bbox:
+                gap = continuation.bbox[1] - previous.bbox[3]
+                overlap = min(previous.bbox[3], continuation.bbox[3]) - max(previous.bbox[1], continuation.bbox[1])
+                same_row = (overlap > min(previous.bbox[3] - previous.bbox[1],
+                                           continuation.bbox[3] - continuation.bbox[1]) * .5
+                            and continuation.bbox[0] >= previous.bbox[2] - 1)
+                if not same_row and (gap < -1 or gap > (previous.bbox[3] - previous.bbox[1]) * .8):
+                    break
+            if styles and next_styles and not next_styles.issubset(styles):
                 break
 
+            original = text
             text = text_before_inline_section(text)
             if not text:
                 break
             if not is_keyword_continuation_text(text):
                 break
             keyword_lines.append(text)
+            if text != original:
+                break
+            if not styles:
+                styles = next_styles
+            previous = continuation
 
-        return standardise_keywords(" ".join(keyword_lines))
+        return standardise_keywords(join_pdf_lines(keyword_lines))
     return ""
 
 
@@ -662,7 +711,7 @@ def extract_description(lines: list[str]) -> str:
             break
         description_lines.append(line)
 
-    return " ".join(description_lines).strip()
+    return join_pdf_lines(description_lines)
 
 
 def submission_form_authors(path: Path) -> str:
@@ -697,7 +746,7 @@ def submission_form_authors(path: Path) -> str:
             for table in page.find_tables(clip=clip).tables:
                 for row in table.extract():
                     if len(row) >= 3 and (row[0] or "").strip().isdigit() and row[1]:
-                        names.append(clean_author_name(" ".join(row[1].split())))
+                        names.append(clean_author_name(join_pdf_lines(row[1].splitlines())))
     return ", ".join(names)
 
 
@@ -740,10 +789,10 @@ def extract_submission_form(
     defaults = default_additional_info or {}
     return {
         "filename": path.name,
-        "abstract_title": clean_title_prefix(compact_info_text(" ".join(sections["title"]))),
+        "abstract_title": clean_title_prefix(compact_info_text(join_pdf_lines(sections["title"]))),
         "abstract_authors": submission_form_authors(path),
-        "abstract_description": compact_info_text(" ".join(sections["abstract"])),
-        "abstract_keywords": standardise_keywords(" ".join(sections.get("keywords", []))),
+        "abstract_description": compact_info_text(join_pdf_lines(sections["abstract"])),
+        "abstract_keywords": standardise_keywords(join_pdf_lines(sections.get("keywords", []))),
         "additional_info": {
             key: compact_info_text(event.group(key) if event else defaults.get(key, ""))
             for key in ("name", "place")

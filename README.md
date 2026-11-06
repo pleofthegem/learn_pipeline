@@ -65,6 +65,11 @@ IDs are removed from titles using `TITLE_ID_PREFIX_PATTERNS` in
 Paired quotation marks around titles are removed; internal quotes and apostrophes
 are preserved. Mixed affiliation suffixes such as `Name1a` or `Name1,a*` are cleaned
 before author names are split, including when no superscript formatting survives.
+Hyphenated words wrapped across PDF lines are joined without an extra space
+after the hyphen; ordinary spaced dashes are preserved.
+Keyword continuations must stay in the adjacent keyword text layout. Numbered
+figure/table captions, page breaks, paragraph gaps and font/style changes end the
+block; genuine wrapped keyword lines and same-row text fragments are retained.
 
 Webinar Excel reports are saved in `webinar/output/`.
 

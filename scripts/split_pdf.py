@@ -19,6 +19,7 @@ from typing import Literal
 import fitz
 
 from . import split_rules as rules
+from .pdf_text import join_pdf_lines
 from .clear_outputs import clear_folder
 
 
@@ -239,7 +240,7 @@ def parse_positioned_contents(pdf: fitz.Document) -> CombinedPdfContents | None:
                                    and span['bbox'][0] < ref[0] - 1).strip()
                     if text:
                         parts.append(text)
-            title = re.sub(r'^\d+\.\s*', '', ' '.join(parts))
+            title = re.sub(r'^\d+\.\s*', '', join_pdf_lines(parts))
             title = re.sub(r'\s+\d+$', '', title).strip()
             if not title:
                 return None

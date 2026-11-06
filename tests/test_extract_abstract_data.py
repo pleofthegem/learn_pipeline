@@ -992,3 +992,126 @@ def test_flat_text_markers_match_silver_membrane_author_list(tmp_path):
     with fitz.open(path) as pdf:
         _, first = extract_proposal_heading(pdf, [Region(1, pdf[0].rect)])
     assert first == 'Vaidhegi Kugarajah'
+
+
+@pytest.mark.parametrize('lines,expected', [
+    (['Non-', 'Sewered Sanitation'], 'Non-Sewered Sanitation'),
+    (['nature‐', 'based treatment'], 'nature‐based treatment'),
+    (['Low‑', 'Carbon Systems'], 'Low‑Carbon Systems'),
+    (['Treatment -', 'A Case Study'], 'Treatment - A Case Study'),
+    (['Treatment', 'and reuse'], 'Treatment and reuse'),
+    (['Already hyphenated within- a line'], 'Already hyphenated within- a line'),
+])
+def test_join_pdf_lines_normalises_only_hyphenated_line_boundaries(lines, expected):
+    from scripts.pdf_text import join_pdf_lines
+    assert join_pdf_lines(lines) == expected
+
+
+def test_hyphenated_wrapping_in_metadata(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Non-', fontsize=16)
+        page.insert_text((72, 95), 'Sewered Sanitation', fontsize=16)
+        page.insert_text((72, 130), 'Jane Lubeck-', fontsize=12, fontname='hebo')
+        page.insert_text((72, 150), 'Schricker1', fontsize=12, fontname='hebo')
+        page.insert_text((72, 180), 'Abstract: Low-carbon nature-', fontsize=10)
+        page.insert_text((72, 200), 'based systems improve water quality.', fontsize=10)
+        page.insert_text((72, 230), 'Keywords: non-', fontsize=10)
+        page.insert_text((72, 250), 'sewered sanitation', fontsize=10)
+        pdf.save(path)
+    row = process_pdf(path)
+    assert row['abstract_title'] == 'Non-Sewered Sanitation'
+    assert row['abstract_authors'] == 'Jane Lubeck-Schricker'
+    assert row['abstract_description'] == 'Low-carbon nature-based systems improve water quality.'
+    assert row['abstract_keywords'] == 'non-sewered sanitation'
+
+
+@pytest.mark.parametrize('caption', [
+    'Table 1. Keyword analysis of Town Action Plan',
+    'Figure 1. Treatment performance',
+    'Fig. 2 Results',
+    'Scheme 1: Process overview',
+])
+def test_keywords_stop_at_numbered_captions(caption):
+    assert extract_keywords(['Keywords: sanitation; governance', caption, 'Short figure labels']) == 'sanitation, governance'
+
+
+def test_keywords_stop_at_inline_caption_and_following_lines():
+    assert extract_keywords(['Keywords: sanitation; reuse Table 1. Test results', 'Figure labels']) == 'sanitation, reuse'
+
+
+def test_keywords_keep_wrapped_payload_but_reject_smaller_caption(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Water quality research', fontsize=16)
+        page.insert_text((72, 100), 'Jane Smith1', fontsize=12)
+        page.insert_text((72, 130), 'Keywords: Non-sewered Sanitation (NSS), Faecal Sludge and Septage Management', fontsize=12, fontname='heit')
+        page.insert_text((72, 148), '(FSSM), Decentralised Governance, Capacity Building (CB)', fontsize=12, fontname='heit')
+        page.insert_text((72, 172), 'Table 1. Keyword analysis of Town Action Plan', fontsize=11)
+        pdf.save(path)
+    assert process_pdf(path)['abstract_keywords'] == ('Non-sewered Sanitation (NSS), '
+        'Faecal Sludge and Septage Management (FSSM), Decentralised Governance, Capacity Building (CB)')
+
+
+@pytest.mark.parametrize('boundary', ['style', 'gap', 'page'])
+def test_keywords_stop_at_layout_boundaries(tmp_path, boundary):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Water quality research', fontsize=16)
+        page.insert_text((72, 110), 'Keywords: sanitation; reuse', fontsize=10, fontname='heit')
+        if boundary == 'page':
+            page = pdf.new_page()
+        page.insert_text((72, 180 if boundary == 'gap' else 125), 'Unrelated short text', fontsize=10,
+                         fontname='helv' if boundary == 'style' else 'heit')
+        pdf.save(path)
+    assert process_pdf(path)['abstract_keywords'] == 'sanitation, reuse'
+
+
+def test_hyphenated_keyword_is_not_an_inline_results_section():
+    assert extract_keywords(['Keywords: Container-based sanitation; Results-based finance;',
+                             'Public-private partnership; Development finance paradigm']) == (
+        'Container-based sanitation, Results-based finance, Public-private partnership, Development finance paradigm')
+
+
+def test_keywords_handle_large_label_and_horizontal_fragments(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Water quality research', fontsize=16)
+        page.insert_text((72, 120), 'Keywords:', fontsize=18, fontname='hebo')
+        page.insert_text((175, 120), 'Non-sewered sanitation;', fontsize=12, fontname='heit')
+        page.insert_text((320, 120), 'reuse', fontsize=12, fontname='heit')
+        page.insert_text((72, 138), 'and recovery', fontsize=12, fontname='heit')
+        page.insert_text((72, 165), 'Figure 1. Treatment performance', fontsize=11)
+        pdf.save(path)
+    assert process_pdf(path)['abstract_keywords'] == 'Non-sewered sanitation, reuse and recovery'
+
+
+def test_wrapped_keywords_keep_long_comma_separated_second_and_third_lines():
+    assert extract_keywords([
+        'Keywords: FSTP (Faecal sludge treatment plant), DEWATS (Decentralized wastewater',
+        'treatment system), Effluent and biosolids, Safe water reuse, Climate resilience,',
+        'Water governance, Urban resilience, Decentralised planning, Sustainable sanitation',
+        'Table 1. Treatment performance',
+        'Short figure labels',
+    ]) == ('FSTP (Faecal sludge treatment plant), DEWATS (Decentralized wastewater treatment system), '
+           'Effluent and biosolids, Safe water reuse, Climate resilience, Water governance, '
+           'Urban resilience, Decentralised planning, Sustainable sanitation')
+
+
+def test_icnss08_wrapped_keyword_block_stops_at_references(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 70), 'Nature-Based DEWATS in India', fontsize=16)
+        page.insert_text((72, 110), 'Keywords: FSTP (Faecal sludge treatment plant), DEWATS (Decentralized wastewater', fontsize=11, fontname='heit')
+        page.insert_text((72, 128), 'treatment system), Effluent and biosolids, Safe water reuse, Climate resilience', fontsize=11, fontname='heit')
+        page.insert_text((72, 150), 'References:', fontsize=11, fontname='hebo')
+        page.insert_text((72, 170), 'Table 1. Treatment performance', fontsize=10)
+        pdf.save(path)
+    assert process_pdf(path)['abstract_keywords'] == (
+        'FSTP (Faecal sludge treatment plant), DEWATS (Decentralized wastewater treatment system), '
+        'Effluent and biosolids, Safe water reuse, Climate resilience')

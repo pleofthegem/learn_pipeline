@@ -14,6 +14,10 @@ TITLE_MAX_LINES = 3
 TITLE_HINT_MIN_SCORE = 0.75
 TITLE_FONT_TOLERANCE = 0.1
 KEYWORD_FONT_TOLERANCE = 0.5
+KEYWORD_CAPTION_RE = re.compile(
+    r"\b(?:fig(?:ure)?\.?|table|scheme|chart|plate|graph|photograph)\s*"
+    r"(?:S?\d+[A-Za-z]?|[IVX]+)(?=\s|[.:)\-–—]|$)", re.I,
+)
 EVENT_ACRONYMS = ("IWA", "AI", "UN", "UK", "USA")
 # Explicit submission-ID prefixes only; do not strip arbitrary leading numbers
 # such as years, chemical names, or numbered research titles.
@@ -165,6 +169,6 @@ INLINE_SECTION_RE = re.compile(
     r"\b(?:"
     r"abstract|background|introduction|methods?|methodology|results|"
     r"discussion|conclusions?|references"
-    r")\s*[:.\-–—]",
+    r")(?:\s*[:.]|\s+[-–—]\s+)",
     re.IGNORECASE,
 )
