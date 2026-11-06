@@ -537,75 +537,79 @@ def is_date_line(line: str) -> bool:
     return bool(rules.MONTH_RE.search(line) or re.search(r"\d{1,2}\s*[-/]\s*\d{1,2}", line))
 
 
-def is_probable_place_line(line: str) -> bool:
-    """Check whether a short header line looks like a venue place."""
-    line = compact_info_text(line)
-    if not line or is_contact_line(line) or is_section_heading(line):
-        return False
-    if rules.EVENT_KEYWORD_RE.search(line) or is_date_line(line):
-        return False
-    if any(char.isdigit() for char in line):
-        return False
-
-    words = line.split()
-    if len(words) > 6:
-        return False
-    return "," in line or line.isupper()
+def unique_labelled_value(header_lines: list[str], pattern: re.Pattern) -> str:
+    """Accept explicit header labels, leaving conflicting values blank."""
+    values = {}
+    for line in header_lines:
+        match = pattern.match(line)
+        if match:
+            value = compact_info_text(match.group(1))
+            if value and not is_contact_line(value) and not is_section_heading(value):
+                values.setdefault(value.casefold(), value)
+    return title_case_if_all_caps(next(iter(values.values()))) if len(values) == 1 else ""
 
 
 def extract_conference_name(header_lines: list[str]) -> str:
-    """Extract a conference/event name from PDF header lines."""
+    """Require a name label or a bounded event heading with edition/year evidence."""
+    if any(rules.EVENT_NAME_LABEL_RE.match(line) for line in header_lines):
+        return unique_labelled_value(header_lines, rules.EVENT_NAME_LABEL_RE)
+    names = []
     for index, line in enumerate(header_lines):
-        if not rules.EVENT_KEYWORD_RE.search(line):
+        if not (rules.EVENT_HEADER_START_RE.match(line)
+                and rules.EVENT_KEYWORD_RE.search(line)
+                and (rules.EVENT_EDITION_RE.search(line) or rules.YEAR_RE.search(line))):
             continue
-
-        name_lines = [line]
-        for extra_line in header_lines[index + 1:index + 4]:
-            if (
-                is_date_line(extra_line)
-                or (is_probable_place_line(extra_line) and "," in extra_line)
-                or rules.PLACE_LABEL_RE.match(extra_line)
-            ):
+        parts = [line]
+        # Continue only an explicitly unfinished event heading, never arbitrary
+        # subsequent lines such as the date, venue or paper title.
+        for extra in header_lines[index + 1:index + 4]:
+            if not re.search(r"\b(?:on|of|for|and)\s*$|&\s*$", parts[-1], re.I):
                 break
-            name_lines.append(extra_line)
-
-        return title_case_if_all_caps(" ".join(name_lines))
-    return ""
+            if (is_date_line(extra) or rules.PLACE_LABEL_RE.match(extra)
+                    or rules.EVENT_NAME_LABEL_RE.match(extra)):
+                break
+            parts.append(extra)
+        names.append(title_case_if_all_caps(" ".join(parts)))
+    return names[0] if len(set(names)) == 1 else ""
 
 
 def extract_conference_place(header_lines: list[str]) -> str:
-    """Extract a conference place from PDF header lines."""
-    for line in header_lines:
-        match = rules.PLACE_LABEL_RE.match(line)
-        if match:
-            return title_case_if_all_caps(match.group(1))
+    """Require an explicit venue/location label; dates and case are insufficient."""
+    return unique_labelled_value(header_lines, rules.PLACE_LABEL_RE)
 
-    for index, line in enumerate(header_lines):
-        if is_date_line(line):
-            match = re.search(r"\b(?:19|20)\d{2}\b\s*,\s*(.+)$", line)
-            if match:
-                place = compact_info_text(match.group(1))
-                if is_probable_place_line(place):
-                    return title_case_if_all_caps(place)
-            for next_line in header_lines[index + 1:index + 3]:
-                if is_probable_place_line(next_line):
-                    return title_case_if_all_caps(next_line)
-    return ""
+
+def title_start_index(lines: list[TextLine], title: str, end_index: int) -> int:
+    """Locate all selected title lines; if ambiguous, expose no guessed header."""
+    remaining = comparable_text(title)
+    if not remaining or not 0 <= end_index < len(lines):
+        return 0
+    for index in range(end_index, -1, -1):
+        chunk = comparable_text(clean_title_prefix(lines[index].text))
+        if not chunk or is_title_noise_line(lines[index].text):
+            continue
+        if not remaining.endswith(chunk):
+            return 0
+        remaining = remaining[:-len(chunk)].rstrip()
+        if not remaining:
+            return index
+    return 0
 
 
 def extract_additional_info(
     lines: list[TextLine],
     title_end_index: int,
     default_additional_info: AdditionalInfo | None = None,
+    *, title: str | None = None,
 ) -> AdditionalInfo:
-    """Extract conference name and place from PDF header text."""
+    """Extract only strongly evidenced event metadata before the entire title."""
     texts = [line.text for line in lines]
     section_index = first_section_index(texts)
     limits = [min(len(texts), rules.HEADER_LINE_LIMIT)]
     if section_index is not None:
         limits.append(section_index)
-    if title_end_index > 0:
-        limits.append(title_end_index)
+    if title is None:
+        title, _ = extract_title(lines, Path(""))
+    limits.append(title_start_index(lines, title, title_end_index))
 
     header_lines: list[str] = []
     for text in texts[:max(0, min(limits))]:
@@ -847,6 +851,7 @@ def process_pdf(
             text_lines,
             title_end_index,
             default_additional_info,
+            title=title,
         ),
     }
 

@@ -147,10 +147,10 @@ def test_default_additional_info_from_values_is_optional() -> None:
     }
 
 
-def test_process_pdf_extracts_multiline_conference_metadata(
+def test_multiline_conference_name_does_not_imply_an_unlabelled_place(
     tmp_path: Path,
 ) -> None:
-    """Check that multiline conference headers become additional info."""
+    """Keep a strong event heading but require a location label."""
     path = (
         tmp_path
         / "Chang - Analysis of Ecological Base Flow in an Urban Water Environment System.pdf"
@@ -176,7 +176,7 @@ def test_process_pdf_extracts_multiline_conference_metadata(
             "IWA 21st International Conference on "
             "Diffuse Pollution & Eutrophication"
         ),
-        "place": "Chiang Mai, Thailand",
+        "place": "",
     }
 
 
@@ -771,3 +771,59 @@ def test_description_requires_explicit_abstract_label(tmp_path, heading, expecte
     row = process_pdf(path)
     assert row['abstract_description'] == expected
     assert row['abstract_keywords'] == 'water, sanitation'
+
+
+def test_multiline_paper_title_is_excluded_from_event_metadata(tmp_path):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        for y, text in [(65, 'IWA 21st International Conference'), (85, 'December 11-14, 2024')]:
+            page.insert_text((72, y), text, fontsize=10)
+        page.insert_text((72, 120), 'WASTEWATER TREATMENT', fontsize=16)
+        page.insert_text((72, 145), 'AT THE INTERNATIONAL CONFERENCE 2026', fontsize=16)
+        page.insert_text((72, 175), 'Jane Smith1, John Doe2', fontsize=11)
+        page.insert_text((72, 210), 'Location: This is a study site, not the event venue', fontsize=10)
+        pdf.save(path)
+    row = process_pdf(path)
+    assert row['abstract_title'] == 'WASTEWATER TREATMENT AT THE INTERNATIONAL CONFERENCE 2026'
+    assert row['additional_info'] == {'name': 'IWA 21st International Conference', 'place': ''}
+
+
+@pytest.mark.parametrize('label', ['Venue', 'Location', 'Host city', 'Conference location', 'Event venue'])
+def test_explicit_event_labels_before_title_are_accepted(tmp_path, label):
+    path = tmp_path / 'paper.pdf'
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 60), 'Conference name: Example Water Conference', fontsize=10)
+        page.insert_text((72, 80), f'{label}: London, UK', fontsize=10)
+        page.insert_text((72, 120), 'Water quality research', fontsize=16)
+        page.insert_text((72, 150), 'Jane Smith1, John Doe2', fontsize=11)
+        pdf.save(path)
+    assert process_pdf(path)['additional_info'] == {'name': 'Example Water Conference', 'place': 'London, UK'}
+
+
+@pytest.mark.parametrize('header', [
+    ['December 11-14, 2024', 'WASTEWATER TREATMENT'],
+    ['December 11-14, 2024, London, UK'],
+    ['Unexpected Symposium Header That Could Change Next Year'],
+    ['A discussion of conference outcomes'],
+])
+def test_weak_event_evidence_is_left_blank(header):
+    from scripts.extract_abstract_data import TextLine, extract_additional_info
+    lines = [TextLine(text, 10) for text in header] + [TextLine('Water quality research', 16)]
+    assert extract_additional_info(lines, len(lines) - 1, title='Water quality research') == {'name': '', 'place': ''}
+
+
+def test_conference_name_does_not_absorb_following_text():
+    from scripts.extract_abstract_data import extract_conference_name
+    assert extract_conference_name(['13th IWA International Conference', 'UNRELATED HEADER TEXT']) == '13th IWA International Conference'
+
+
+@pytest.mark.parametrize('field,headers', [
+    ('place', ['Venue: London, UK', 'Location: Paris, France']),
+    ('name', ['Conference: Water Research', 'Event: Sanitation Research']),
+])
+def test_conflicting_explicit_event_labels_are_left_blank(field, headers):
+    from scripts.extract_abstract_data import TextLine, extract_additional_info
+    lines = [TextLine(text, 10) for text in headers] + [TextLine('Water quality research', 16)]
+    assert extract_additional_info(lines, len(lines) - 1, title='Water quality research')[field] == ''

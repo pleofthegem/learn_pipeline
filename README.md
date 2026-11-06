@@ -89,6 +89,13 @@ Conference defaults only fill fields missing from a PDF. Default data locations
 are anchored to the project folder. Custom input and output folders must be
 separate, with neither containing the other.
 
+Automatic conference metadata uses only text before the entire paper title.
+Names require an explicit conference/event label or a recognisable event heading
+with edition/year evidence. Places require an explicit `Venue:`, `Location:`,
+`Place:`, or `Host city:` label; dates, capitalisation, city-like text and author
+affiliations are insufficient. Conflicting labels leave the field blank unless
+an explicit batch default was provided.
+
 Word conversion is automatic; no extra flag is needed for `.doc` or `.docx` inputs.
 If Word files are present, LibreOffice's `soffice` or `libreoffice` command must be
 on PATH. PDF-only and webinar runs do not require LibreOffice.

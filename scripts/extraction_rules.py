@@ -139,9 +139,18 @@ MONTH_RE = re.compile(
 )
 YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 PLACE_LABEL_RE = re.compile(
-    r"^\s*(?:venue|location|place|host city)\s*[:.\-–—]\s*(.+)$",
+    r"^\s*(?:(?:conference|event)\s+(?:venue|location|place)|venue|location|place|host city)"
+    r"\s*[:.\-–—]\s*(.+)$",
     re.IGNORECASE,
 )
+EVENT_NAME_LABEL_RE = re.compile(
+    r"^\s*(?:(?:conference|event|congress|symposium)(?:\s+name)?)\s*[:.\-–—]\s*(.+)$",
+    re.IGNORECASE,
+)
+EVENT_HEADER_START_RE = re.compile(
+    r"^\s*(?:\d{1,3}(?:st|nd|rd|th)\b|IWA\b|International\b|World\b|Annual\b)", re.I,
+)
+EVENT_EDITION_RE = re.compile(r"\b\d{1,3}(?:st|nd|rd|th)\b", re.I)
 INLINE_SECTION_RE = re.compile(
     r"\b(?:"
     r"abstract|background|introduction|methods?|methodology|results|"
