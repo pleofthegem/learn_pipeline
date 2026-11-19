@@ -106,7 +106,9 @@ an explicit batch default was provided.
 
 Word conversion is automatic; no extra flag is needed for `.doc` or `.docx` inputs.
 If Word files are present, LibreOffice's `soffice` or `libreoffice` command must be
-on PATH. PDF-only and webinar runs do not require LibreOffice.
+on PATH. See [Adding LibreOffice to PATH](#adding-libreoffice-to-path) if it is
+installed but the pipeline cannot find it. PDF-only and webinar runs do not
+require LibreOffice.
 
 To additionally produce anonymised text and its CSV/JSON reports, run:
 
@@ -133,6 +135,89 @@ outputs. Splitting and extraction default to the bundle's `pdfs/` folder;
 provide a positional folder to read a different source. Anonymisation writes
 only intermediate outputs. `clear_outputs` empties the bundle and intermediate
 outputs, leaving source inputs and webinar files untouched.
+
+## Adding LibreOffice to PATH
+
+If you see `Office conversion requires soffice or libreoffice.`, the Python
+process running the pipeline cannot find either command on its `PATH`. The check
+uses `shutil.which("soffice")`, then `shutil.which("libreoffice")`; it does not
+search installed applications. Installing LibreOffice alone may therefore be
+insufficient. Add the folder containing its executable to `PATH` using the
+instructions below, adjusting the example path if you installed it elsewhere.
+
+### Windows
+
+1. Find `soffice.exe`, usually in `C:\Program Files\LibreOffice\program`.
+2. Search the Start menu for **Edit environment variables for your account**.
+3. Under **User variables**, select **Path**, choose **Edit**, then **New**, and
+   add `C:\Program Files\LibreOffice\program`. Add the folder, without quotes,
+   rather than the path to `soffice.exe`. Keep the existing entries.
+4. Save the dialogs, close the app and any terminals or IDEs used to launch it,
+   then reopen them and start the app again.
+
+For a temporary check in PowerShell, set the path and launch from that same
+terminal, in the project folder:
+
+```powershell
+$env:Path = 'C:\Program Files\LibreOffice\program;' + $env:Path
+.\'Start IWA Learn.bat'
+```
+
+### macOS
+
+The usual executable folder is
+`/Applications/LibreOffice.app/Contents/MacOS`. In Terminal, from the project
+folder, run:
+
+```bash
+export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
+sh "Start IWA Learn.command"
+```
+
+To keep this setting for future zsh terminals, add the `export PATH=...` line
+above to `~/.zshrc`, then open a new terminal. Shell settings may not reach an
+app started by double-clicking its launcher; launch from the configured terminal
+if double-clicking still reports LibreOffice as missing.
+
+### Linux
+
+If LibreOffice is installed through your distribution's package manager, its
+command is usually already on `PATH`. For a custom installation, find the folder
+containing `soffice` or `libreoffice` and add it, for example:
+
+```bash
+# Replace this example with the actual executable folder.
+export PATH="/opt/libreoffice/program:$PATH"
+sh "Start IWA Learn.command"
+```
+
+To keep the setting, add the adjusted `export PATH=...` line to your shell's
+startup file (`~/.bashrc` for interactive Bash, or `~/.zshrc` for zsh), then open
+a new terminal and launch from there. If using WSL, install and configure
+LibreOffice inside WSL, or run the Windows app with Windows Python and follow
+the Windows instructions above.
+
+### Verify detection
+
+From the project folder, use the same Python environment as the pipeline. For
+the desktop app's `.venv`, run this in Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -c "from scripts.convert_to_pdf import office_converter_command; print(office_converter_command())"
+```
+
+On macOS/Linux:
+
+```bash
+.venv/bin/python -c "from scripts.convert_to_pdf import office_converter_command; print(office_converter_command())"
+```
+
+For a different environment, replace the Python executable with the one you use
+to run the pipeline. A successful check prints the executable path. If it raises
+the same error, check that the folder you added contains the executable and that
+you restarted the terminal or app launcher after changing `PATH`. If the check
+passes but the desktop app still fails, start the app from that same configured
+terminal so it inherits the updated `PATH`.
 
 ## Webinar reports
 
